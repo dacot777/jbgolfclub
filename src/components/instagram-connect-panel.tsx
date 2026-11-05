@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { InstagramConnectionModel } from '@/lib/instagram-connection'
+import { COMPANY_INSTAGRAM } from '@/lib/company-instagram'
 
 export function InstagramConnectPanel({
   model,
@@ -48,7 +49,7 @@ export function InstagramConnectPanel({
               ? `@${connected.username}`
               : status?.targetUsername
                 ? `@${status.targetUsername}`
-                : '회사 인스타그램 계정'}
+                : `@${COMPANY_INSTAGRAM.username}`}
           </strong>
           <span>인스타그램 계정 1개만 연결</span>
         </div>

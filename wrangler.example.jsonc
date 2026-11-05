@@ -13,7 +13,7 @@
   "vars": {
     "APP_ORIGIN": "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev",
     "INSTAGRAM_APP_ID": "YOUR_INSTAGRAM_APP_ID",
-    "INSTAGRAM_ACCOUNT_USERNAME": "YOUR_INSTAGRAM_USERNAME",
+    "INSTAGRAM_ACCOUNT_USERNAME": "jbgolfacademy",
     "INSTAGRAM_API_VERSION": "v26.0",
   },
   "d1_databases": [

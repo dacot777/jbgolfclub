@@ -60,5 +60,6 @@ npm run build:pages
 - [구현 및 검증 기록](docs/PLAN.md)
 - [한 인스타그램 계정 연결 준비](docs/INSTAGRAM_SETUP.md)
 - [비용 원칙](docs/COST_POLICY.md)
+- [무료 서버의 계정·권한 준비](docs/CLOUDFLARE_FREE_SETUP.md)
 
 외부 자료 전체를 통째로 설치하거나 기존 규칙을 덮어쓰지 않았습니다. 실제 사용한 shadcn 기본 컴포넌트와 Magic UI 숫자 효과의 라이선스를 `docs/licenses/`에 보존했습니다.

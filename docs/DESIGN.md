@@ -26,7 +26,7 @@ Typography uses locally served DM Sans Variable and Noto Sans KR Variable with t
 
 ## States and data
 
-- Default: “Meta 계정 미연결”, em dashes and helpful empty states. Missing data is never presented as zero.
+- Default: “Instagram 계정 미연결”, target account @jbgolfacademy, em dashes and helpful empty states. Missing data is never presented as zero.
 - Demo: explicitly marked “예시 데이터 · 실제 광고 실적 아님”; copied reports and exported CSV carry the same notice.
 - Zero denominator: show absolute change without a percentage; no results means no cost per result.
 - Reach is a period-specific unique value, never a sum of daily or ad reach.
