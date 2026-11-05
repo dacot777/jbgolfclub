@@ -25,3 +25,11 @@
 ## Instagram 연결 준비 UI
 
 후속 버전은 Instagram 전용 연결 안내와 계정 연결/광고 실적 권한의 구분을 포함합니다. GitHub Pages 빌드에서는 서버 API 요청과 로그인 제출이 활성화되지 않습니다. 실제 로그인 기능은 무료 Workers/D1 서버에 앱 설정과 허용 @아이디를 등록하고 회사 계정 소유자가 승인한 후 별도로 검증해야 합니다. 아직 실제 계정을 연결했다고 취급하지 않습니다.
+
+### @jbgolfacademy 안내 반영 완료
+
+- Source main: `126c5c578ecf7e953e350a370125fdb415447ad3`
+- Static gh-pages: `ca14ae71eeb67562ec2151112dcea5ca8ab2fb3c`
+- Pages run: https://github.com/dacot777/jbgolfclub/actions/runs/41968714205
+- Result: **Success**, 25초.
+- 반영 내용: Instagram 전용 연결 준비 UI와 @jbgolfacademy 대상 표시. 실제 OAuth 서버는 아직 미설정이며, 계정 인증·광고 실적 권한이 연결되었다고 표시하지 않습니다.
