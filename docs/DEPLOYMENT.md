@@ -33,3 +33,9 @@
 - Pages run: https://github.com/dacot777/jbgolfclub/actions/runs/41968714205
 - Result: **Success**, 25초.
 - 반영 내용: Instagram 전용 연결 준비 UI와 @jbgolfacademy 대상 표시. 실제 OAuth 서버는 아직 미설정이며, 계정 인증·광고 실적 권한이 연결되었다고 표시하지 않습니다.
+
+## 2026-11-05 — Workers Free 연결 서버 배포
+
+연결용 사이트 **https://jbgolf-connection.jbgolfacademy.workers.dev/**를 Workers Free + D1에 배포했습니다. 리소스·버전·현재 설정 상태는 [Cloudflare 배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 있습니다. Instagram 앱 설정과 실제 사용자 승인, 광고 조회 권한은 아직 필요합니다.
+
+새 환경에서는 기존 GitHub Pages 주소도 직접 조회해 HTTP 200, 한국어 페이지 제목, `/jbgolfclub/assets/` 경로를 확인했습니다. 이번 작업에서 기존 `gh-pages` 결과물을 변경하거나 리디렉션하지 않았습니다.

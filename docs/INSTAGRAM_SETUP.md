@@ -2,13 +2,37 @@
 
 ## 이번 단계의 범위
 
-연결 대상으로 지정된 계정: **[@jbgolfacademy](https://www.instagram.com/jbgolfacademy/)**. 사용자가 제공한 공개 계정 주소이며 실제 로그인 승인은 아직 완료되지 않았습니다. 예제 서버 설정의 허용 계정에 이 이름을 반영했습니다.
+연결 대상으로 지정된 계정: **[@jbgolfacademy](https://www.instagram.com/jbgolfacademy/)**. 사용자가 제공한 공개 계정 주소이며 실제 로그인 승인은 아직 완료되지 않았습니다. 배포한 서버의 허용 계정에 이 이름을 반영했습니다.
 
 사용자는 인스타그램 공식 로그인으로만 로그인합니다. 로그인 주소는 `www.instagram.com/oauth/authorize`이며 `enable_fb_login=0`을 지정합니다. 요청 권한은 `instagram_business_basic` 하나입니다. 인스타그램 비밀번호나 인증번호를 이 사이트·GitHub·채팅에 입력하지 않습니다.
 
 이 권한은 인스타그램 계정 식별을 위한 권한입니다. **광고비·캠페인별 유료 광고 실적 조회 권한을 부여하지 않습니다.** 광고 실적을 가져오려면 회사 광고 계정의 Marketing API 읽기 권한이 별도로 필요합니다. 인스타그램 로그인 성공을 광고 실적 연동 성공으로 취급하지 않습니다. 광고 집행 방식과 권한 보유 담당자를 확인한 뒤 광고 연결 단계를 정합니다.
 
 한 계정의 `@아이디`를 서버 설정에 고정합니다. 공식 로그인 결과의 이름을 확인하고, 처음 연결한 계정 ID를 저장한 뒤 다른 ID로 바꾸지 않습니다. 여러 계정 추가 기능은 구현하지 않습니다.
+
+## 현재 준비된 서버와 다음 입력값
+
+2026-11-05 Workers Free + D1 서버를 실제 배포했습니다. 운영 주소는 **https://jbgolf-connection.jbgolfacademy.workers.dev**입니다. 데이터베이스 테이블과 `TOKEN_ENCRYPTION_KEY` Secret을 생성했고, 홈페이지와 연결 상태 API의 실제 응답을 확인했습니다. 앱 설정 전에는 API가 `configured: false`를 반환합니다.
+
+다음 단계는 회사의 Meta 개발자 앱에 **Instagram API with Instagram Login**을 설정하는 것입니다. 앱 ID와 비밀키는 해당 Instagram 제품 설정에서 확인합니다.
+
+| 앱 설정 항목 | 실제 입력 주소 |
+| --- | --- |
+| 사이트 주소 | https://jbgolf-connection.jbgolfacademy.workers.dev/ |
+| OAuth Redirect URI | https://jbgolf-connection.jbgolfacademy.workers.dev/api/auth/instagram/callback |
+| 개인정보 처리 안내 | https://jbgolf-connection.jbgolfacademy.workers.dev/privacy |
+| 데이터 삭제 안내 | https://jbgolf-connection.jbgolfacademy.workers.dev/data-deletion |
+| 데이터 삭제 콜백 | https://jbgolf-connection.jbgolfacademy.workers.dev/api/data-deletion |
+| 연결 해제 콜백 | https://jbgolf-connection.jbgolfacademy.workers.dev/api/auth/instagram/deauthorize |
+
+앱 정보를 받으면 Cloudflare의 **Workers & Pages → jbgolf-connection → Settings → Variables and Secrets**에서 아래 항목을 추가하고 Deploy합니다.
+
+- `INSTAGRAM_APP_ID`: **Text** 유형의 공개 앱 ID.
+- `INSTAGRAM_APP_SECRET`: **Secret** 유형의 앱 비밀키. 채팅이나 GitHub에 보내지 않습니다.
+
+`APP_ORIGIN`, 허용 계정, API 버전, D1 연결, 암호화 키는 이미 등록되어 있습니다. 암호화 키를 새로 만들거나 기존 데이터베이스를 삭제하지 않습니다. 대시보드에서 앱 ID를 설정했다면 이후 Wrangler 배포 전에 그 공개 값을 로컬 운영 설정에도 반영해 보존해야 합니다.
+
+앱의 테스트 계정 등록·초대 승인과 프로페셔널 계정 조건은 실제 Instagram 제품 화면에서 확인합니다. 준비 후 사이트의 공식 Instagram 로그인에서 회사 계정 소유자가 승인합니다. 관리자용 개발자 앱 등록과 사이트 이용자의 Instagram 로그인은 별도 절차입니다.
 
 ## 사용자가 확인할 공개 정보
 
@@ -36,11 +60,11 @@
 
 현재 GitHub Pages는 정적 화면이므로 토큰·비밀키를 보관할 수 없습니다. Cloudflare Workers Free + D1 무료 구성을 준비했습니다. 로그인 쿠키와 API가 같은 출처에서 동작하도록 실제 계정 연결용 홈페이지와 API를 Workers 한 주소에서 제공합니다. 별도 유료 도메인은 필요하지 않습니다.
 
-사용자에게 필요한 것은 Cloudflare 무료 계정입니다. 계정이 있으면 그대로 사용하고, 없다면 무료 계정을 만듭니다. 계정 생성·본인 인증은 사용자가 직접 진행합니다. 비밀번호를 채팅으로 전달하지 않습니다. 현재 이 작업 환경에는 Cloudflare 계정 인증이나 Instagram 앱 설정이 없어 실제 서버 배포·실제 로그인 승인은 아직 수행하지 못했습니다.
+Cloudflare 계정 인증과 무료 요금제 확인, 실제 서버 배포는 완료했습니다. Instagram 앱 ID·비밀키와 계정 소유자의 실제 로그인 승인은 아직 필요합니다. 비밀번호·비밀키를 채팅으로 전달하지 않습니다.
 
 처음 준비하는 사용자는 [무료 서버 1회 준비 안내](CLOUDFLARE_FREE_SETUP.md)를 먼저 따릅니다. 실제 토큰 값이 없는 상태에서 배포 권한이 있다고 가정하지 않습니다.
 
-배포 준비 절차(운영자용):
+최초 배포 절차(운영자용, 현재 서버는 생성 완료):
 
 1. Cloudflare에서 Workers 플랜이 Free인지 확인합니다.
 2. `wrangler.example.jsonc`를 로컬의 `wrangler.production.jsonc`로 복사하고 실제 Workers 주소·Instagram 앱 ID·@아이디를 설정합니다. 예제의 `YOUR_...`와 D1 ID는 플레이스홀더이며 실제 인증정보가 아닙니다.
@@ -61,6 +85,6 @@
 
 ## 검증과 남은 단계
 
-로컬 Workers/D1 런타임에서 가짜 Instagram API 응답으로 OAuth·계정 제한·암호화·삭제·자동 갱신을 검사합니다. 이 테스트는 실제 Meta 앱의 승인이나 실제 Instagram 로그인 성공의 증거가 아닙니다. 실제 앱과 무료 서버 설정 후 실제 계정으로 다시 검증해야 합니다.
+로컬 Workers/D1 런타임에서 가짜 Instagram API 응답을 사용하는 9개 검사가 통과했습니다. 실제 배포 서버의 홈페이지·연결 상태 API·테이블·암호화 Secret·스케줄도 확인했습니다. 이 검증은 실제 Meta 앱의 승인이나 실제 Instagram 로그인 성공의 증거가 아닙니다. 앱 설정과 사용자 승인 후 실제 계정으로 다시 검증해야 합니다.
 
 공식 참고: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/ · https://developers.facebook.com/docs/marketing-api/get-started/authorization/ · https://developers.cloudflare.com/workers/static-assets/

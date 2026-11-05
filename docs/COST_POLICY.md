@@ -25,7 +25,9 @@
 | D1 저장 공간 | 계정 합산 5GB, DB당 최대 500MB, 무료 DB 최대 10개 |
 | Worker 수 | 무료 계정 최대 100개. 웹페이지 수 제한을 의미하지 않음 |
 
-Workers Free나 D1 Free의 사용량 한도를 초과하면 요청/쿼리가 오류를 반환하거나 저장 작업이 제한됩니다. Free 상태에서 이를 자동으로 유료 업그레이드하는 운영을 하지 않습니다. 현재 실제 Cloudflare 서버는 아직 배포하지 않았으며, 사용자의 계정이 Workers Free인지 확인한 뒤에만 배포합니다.
+Workers Free나 D1 Free의 사용량 한도를 초과하면 요청/쿼리가 오류를 반환하거나 저장 작업이 제한됩니다. Free 상태에서 이를 자동으로 유료 업그레이드하는 운영을 하지 않습니다.
+
+2026-11-05 사용자가 제공한 계정의 Subscriptions 화면에서 **Workers Free · Active**를 확인한 뒤 Worker 1개와 D1 데이터베이스 1개를 만들었습니다. 유료 구독·플랜 변경·결제 수단 등록 API는 호출하지 않았습니다. 실제 서버 주소와 검증 범위는 [배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 있습니다.
 
 출처: https://developers.cloudflare.com/workers/platform/pricing/ · https://developers.cloudflare.com/d1/platform/pricing/
 

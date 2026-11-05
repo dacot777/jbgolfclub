@@ -100,3 +100,13 @@ TypeScript 및 Vite build 통과. Chromium Playwright 6개 검사 통과, 375·7
 - Instagram 기본 권한을 Marketing API 권한으로 오인하지 않습니다. 계정 프로필 연결 성공은 광고비 조회 성공의 증거가 아닙니다.
 
 Wrangler의 dry-run 패키징도 통과했습니다. 이 환경의 읽기 제한이 있는 홈 디렉터리를 변경하는 대신 명령 범위의 XDG_CONFIG_HOME=/tmp/jbgolf-cloudflare-config, WRANGLER_LOG_PATH=/tmp/jbgolf-wrangler-dryrun.log를 사용했습니다. 인증을 대체하거나 프록시를 끄지 않았으며 실제 Cloudflare 업로드는 하지 않았습니다.
+
+## 2026-11-05 — 실제 무료 Cloudflare 배포
+
+- 기존 프로젝트 범위의 Wrangler 4.157.0(MIT OR Apache-2.0)을 재사용했습니다. 추가 전역 도구나 유료 서비스를 설치하지 않았습니다. 출처: https://github.com/cloudflare/workers-sdk · 공식 API: https://api.cloudflare.com/client/v4/.
+- 새 환경에서 `CLOUDFLARE_API_TOKEN` 바인딩이 ready임을 확인하고 공식 토큰 검증 API와 계정 조회 API가 HTTP 200으로 성공했습니다. 값은 출력하지 않았고 기존 HTTPS 프록시·TLS 검증을 유지했습니다.
+- 토큰에는 청구 조회 권한이 없어 subscriptions API가 403을 반환했습니다. 권한 확대 대신 사용자가 제공한 Subscriptions 화면의 **Workers Free · Active** 표시로 무료 요금제를 확인했습니다.
+- 공식 API와 Wrangler로 workers.dev 주소, D1 데이터베이스, 테이블, Worker·정적 자산·일일 스케줄을 설정했습니다. `TOKEN_ENCRYPTION_KEY`는 메모리에서 생성해 Cloudflare Secret에만 저장했습니다. 실제 키 값은 파일·로그·GitHub에 기록하지 않았습니다.
+- 로컬 `wrangler.production.jsonc`는 Git 제외 경로에 생성했습니다. 배포 전후의 설치 의존성과 lockfile은 변경하지 않았습니다.
+- 서버 빌드 및 실제 로컬 Workers/D1의 9개 검사 통과. 실제 공개 서버의 홈페이지·API·법적 안내 경로와 Chromium 렌더링도 확인했습니다. 실제 Instagram OAuth·광고 실적 수집의 성공을 뜻하지 않습니다.
+- 생성 리소스와 실제 배포 버전, 남은 앱 설정은 [Cloudflare 배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 기록했습니다.
