@@ -15,6 +15,14 @@ React + TypeScript + Vite, Tailwind CSS 4, shadcn/Radix primitives, Recharts, Lu
 
 ## Real Meta integration still needed
 
+### Single Instagram login backend prepared
+
+`worker/` implements official Instagram Login with `instagram_business_basic`, a one-username/one-ID connection, AES-GCM encrypted D1 credentials, HTTP-only same-origin sessions, CSRF protection, disconnect/deletion and daily long-token maintenance. `wrangler.example.jsonc` is a template, not an active deployment. `npm run build:worker` produces a same-origin frontend for Workers; the normal Pages build deliberately disables API requests because GitHub Pages cannot run this backend.
+
+The user's site login requirement is Instagram only. It does not request Facebook Login. Basic Instagram login does not grant paid advertising insights access. A separate authorized Marketing API source is still required for advertising spend and campaign reporting. Await the user's advertising setup and account details; do not silently replace the requested paid-ad workflow with organic profile insights.
+
+Local worker tests use real emulated Workers/D1 and fake Instagram responses. They do not prove real app approval or real account authorization. Actual Workers hosting credentials, Instagram app configuration and owner approval are not present yet. Free service tiers are mandatory; see COST_POLICY.md.
+
 A production service must add official Meta OAuth and server-side credential storage, account selection, Instagram publisher-platform filtering, persisted period aggregates and detailed insights, and an hourly server scheduler. Period/account/granularity/breakdown keys must be updated rather than appended when refetching the same period. Reach must come from the corresponding period-level query; it must not be added across daily or ad rows. The same objective’s spend and results determine cost per result.
 
 The frontend currently models Korean reporting periods. Before a real account is enabled, use its time zone, currency, attribution configuration and a supported API granularity for the identical prior-week cutoff; do not silently equate daily-only snapshots with a partial-day comparison.

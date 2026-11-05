@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jbgolf-connection",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-07-30",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "vars": {
+    "APP_ORIGIN": "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev",
+    "INSTAGRAM_APP_ID": "YOUR_INSTAGRAM_APP_ID",
+    "INSTAGRAM_ACCOUNT_USERNAME": "YOUR_INSTAGRAM_USERNAME",
+    "INSTAGRAM_API_VERSION": "v26.0",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jbgolf-single-instagram",
+      "database_id": "REPLACE_WITH_THE_ID_FROM_D1_CREATE",
+      "migrations_dir": "worker/migrations",
+    },
+  ],
+  "triggers": { "crons": ["0 0 * * *"] },
+}

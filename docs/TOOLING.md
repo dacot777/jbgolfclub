@@ -88,3 +88,15 @@ Meta OAuth·실제 실적 수집·시간별 갱신은 미구현이며 인증·�
 ## 검증
 
 TypeScript 및 Vite build 통과. Chromium Playwright 6개 검사 통과, 375·768·1024·1440px screenshot 수집 후 데스크톱/모바일 확인. 실제 Meta API 및 Ads Manager 대조는 수행하지 않았습니다. Git 원격에는 push하지 않았고 사이트/환경을 게시하지 않았습니다.
+
+## 2026-11-05 — 한 계정 Instagram Login 준비
+
+사용자는 사이트에서 Instagram 로그인만 사용하고, 향후 사이트들도 무료 범위로 진행하도록 지정했습니다. `docs/COST_POLICY.md`와 `AGENTS.md`에 반영했습니다.
+
+- `wrangler` 4.157.0 (MIT OR Apache-2.0), `miniflare` 4.20260730.0 (MIT), `@cloudflare/workers-types` 5.20261104.1 (MIT OR Apache-2.0), `esbuild` 0.28.2 (MIT)를 프로젝트 devDependency로 고정했습니다. 전역 설치·서비스 가입·유료 구독은 하지 않았습니다.
+- 공식 Cloudflare 문서의 원문을 `cloudflare/cloudflare-docs` production 브랜치에서 읽었습니다: Workers pricing, D1 pricing, static-assets binding 및 worker-script routing. Workers Free의 존재와 정적 자산/서버를 한 주소로 제공하는 설정을 확인했습니다.
+- 공식 Meta `facebook/facebook-nodejs-business-sdk` 커밋 `246c937eb5c1272ed743db41a944900bee449be9`의 README 및 버전 근거를 확인했습니다(SDK 26.0.3, Graph API v26.0). 해당 SDK를 앱에 설치하거나 코드를 복사하지는 않았습니다. Instagram OAuth는 별도의 공식 Instagram Login endpoint를 직접 사용합니다.
+- 로그인 서버는 실제 Miniflare Workers/D1에서 가짜 외부 응답을 사용한 9개 검사 통과. 브라우저 10개 검사 및 Worker 프론트엔드/타입 빌드 통과. 실제 앱·서버 계정이 없어 실제 Instagram 로그인은 실행하지 않았습니다.
+- Instagram 기본 권한을 Marketing API 권한으로 오인하지 않습니다. 계정 프로필 연결 성공은 광고비 조회 성공의 증거가 아닙니다.
+
+Wrangler의 dry-run 패키징도 통과했습니다. 이 환경의 읽기 제한이 있는 홈 디렉터리를 변경하는 대신 명령 범위의 XDG_CONFIG_HOME=/tmp/jbgolf-cloudflare-config, WRANGLER_LOG_PATH=/tmp/jbgolf-wrangler-dryrun.log를 사용했습니다. 인증을 대체하거나 프록시를 끄지 않았으며 실제 Cloudflare 업로드는 하지 않았습니다.

@@ -8,3 +8,7 @@ test-results/
 .DS_Store
 __pycache__/
 *.pyc
+.wrangler/
+.worker-build/
+.dev.vars*
+wrangler.production.jsonc

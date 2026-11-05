@@ -7,9 +7,12 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "build:pages": "tsc --noEmit && vite build --base=/jbgolfclub/",
+    "build:worker": "tsc --noEmit && tsc -p tsconfig.worker.json && vite build --mode worker",
+    "test:worker": "node --test worker-tests/connection.test.mjs",
+    "deploy:worker": "npm run build:worker && wrangler deploy --config wrangler.production.jsonc",
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",
-    "format": "prettier --write src tests vite.config.ts playwright.config.ts tsconfig.json components.json package.json index.html"
+    "format": "prettier --write src tests worker worker-tests vite.config.ts playwright.config.ts tsconfig.json tsconfig.worker.json components.json package.json index.html wrangler.example.jsonc"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "5.3.0",
@@ -25,15 +28,19 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261104.1",
     "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.4",
     "@types/node": "26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.2.1",
+    "esbuild": "0.28.2",
+    "miniflare": "4.20260730.0",
     "prettier": "3.6.2",
     "tailwindcss": "4.3.4",
     "typescript": "7.0.2",
-    "vite": "8.3.5"
+    "vite": "8.3.5",
+    "wrangler": "4.157.0"
   }
 }

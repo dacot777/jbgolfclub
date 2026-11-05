@@ -54,7 +54,7 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
   await expect(
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
-  await expect(page.getByText('Meta 계정 미연결')).toBeVisible()
+  await expect(page.getByText('Instagram 계정 미연결')).toBeVisible()
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toBeDisabled()

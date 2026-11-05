@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -44,6 +44,11 @@ import {
   costPerResult,
 } from '@/lib/report'
 import * as demo from '@/lib/demo'
+import { InstagramConnectPanel } from '@/components/instagram-connect-panel'
+import {
+  useInstagramConnection,
+  instagramErrors,
+} from '@/lib/instagram-connection'
 
 const WeeklyChart = lazy(() =>
   import('@/components/performance-charts').then((m) => ({
@@ -107,6 +112,27 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState('overview')
+  const instagram = useInstagramConnection()
+  const linkedInstagram = instagram.status?.authenticated
+    ? instagram.status.connection
+    : null
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const success = url.searchParams.get('instagram_connected')
+    const error = url.searchParams.get('instagram_error')
+    if (!success && !error) return
+    setDialog('connect')
+    setSample(false)
+    setMessage(
+      success
+        ? ''
+        : instagramErrors[error!] ||
+            '인스타그램 연결을 완료하지 못했습니다. 다시 시도해 주세요.',
+    )
+    url.searchParams.delete('instagram_connected')
+    url.searchParams.delete('instagram_error')
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+  }, [])
   const period = periods(sample ? demo.DEMO_AS_OF : new Date().toISOString())
   const report = sample
     ? weeklyReport(
@@ -269,7 +295,13 @@ export default function App() {
           <div className="topbar-right">
             <span className="connection-status">
               <i />
-              {sample ? '예시 데이터 모드' : 'Meta 계정 미연결'}
+              {sample
+                ? '예시 데이터 모드'
+                : linkedInstagram
+                  ? linkedInstagram.needsReconnect
+                    ? 'Instagram 재연결 필요'
+                    : 'Instagram 연결됨 · 광고 권한 대기'
+                  : 'Instagram 계정 미연결'}
             </span>
             <button
               className="help-button"
@@ -319,12 +351,16 @@ export default function App() {
                 <strong>
                   {sample
                     ? '예시 데이터 미리보기'
-                    : '광고 계정을 연결해 주세요'}
+                    : linkedInstagram
+                      ? '인스타그램 계정이 연결되었습니다'
+                      : '인스타그램 계정을 연결해 주세요'}
                 </strong>
                 <span>
                   {sample
                     ? '화면 검토용 합성 데이터입니다. 실제 광고 실적이 아닙니다.'
-                    : '계정 연결 전에는 실적을 0으로 표시하지 않습니다.'}
+                    : linkedInstagram
+                      ? '광고 계정의 실적 조회 권한은 별도로 설정해야 합니다.'
+                      : '계정 연결 전에는 실적을 0으로 표시하지 않습니다.'}
                 </span>
               </span>
             </div>
@@ -349,8 +385,8 @@ export default function App() {
                     이번 주의 숫자에서, 다음 주의 방향까지.
                   </p>
                   <p className="report-placeholder">
-                    계정을 연결하면 주간 핵심 성과·지난주 대비 변화·월간 누적
-                    실적을
+                    광고 실적 조회 권한을 연결하면 주간 핵심 성과·지난주 대비
+                    변화·월간 누적 실적을
                     <br className="desktop-only" /> 같은 집계 기준으로 정리한
                     보고 문장이 표시됩니다.
                   </p>
@@ -840,7 +876,7 @@ export default function App() {
                                 <p>
                                   {sample
                                     ? '검색어 또는 브랜드 필터를 변경해 주세요.'
-                                    : 'Meta 계정을 연결하면 Instagram에 게재된 광고를 확인할 수 있습니다.'}
+                                    : '광고 계정의 조회 권한을 연결하면 Instagram에 게재된 광고를 확인할 수 있습니다.'}
                                 </p>
                                 {!sample && (
                                   <Button
@@ -877,7 +913,9 @@ export default function App() {
             <span>
               {sample
                 ? '예시 데이터 · 실제 Meta API와 연결되지 않은 화면입니다.'
-                : '계정 미연결 · 실제 데이터 수집은 아직 시작되지 않았습니다.'}
+                : linkedInstagram
+                  ? '인스타그램 연결됨 · 광고 실적 권한은 아직 설정되지 않았습니다.'
+                  : '인스타그램 미연결 · 실제 데이터 수집은 아직 시작되지 않았습니다.'}
             </span>
             <button onClick={() => setDialog('connect')}>
               연결 도움말
@@ -907,12 +945,12 @@ export default function App() {
             <DialogTitle>
               {dialog === 'period'
                 ? '집계 기간과 비교 기준'
-                : 'Meta 광고 계정 연결 안내'}
+                : '인스타그램 계정 연결'}
             </DialogTitle>
             <DialogDescription>
               {dialog === 'period'
                 ? '월요일부터 집계 시점까지의 성과를 지난주 같은 요일·같은 시점과 비교합니다.'
-                : '현재는 홈페이지 화면 초안입니다. 실제 계정 연결 기능은 아직 활성화되지 않았습니다.'}
+                : '회사 인스타그램 계정 하나를 공식 로그인으로 연결합니다. 광고 실적 조회 권한은 별도로 설정합니다.'}
             </DialogDescription>
           </DialogHeader>
           {dialog === 'period' ? (
@@ -936,48 +974,13 @@ export default function App() {
             </div>
           ) : (
             <>
-              <ol className="connection-steps">
-                <li>
-                  <span>1</span>
-                  <div>
-                    <strong>회사 Meta 앱과 계정 권한 준비</strong>
-                    <p>광고 계정의 실적을 조회하는 읽기 권한이 필요합니다.</p>
-                  </div>
-                </li>
-                <li>
-                  <span>2</span>
-                  <div>
-                    <strong>안전한 공식 로그인 연결</strong>
-                    <p>
-                      서버의 인증·보관 기능 구현 후 Meta 로그인으로 계정을
-                      선택합니다.
-                    </p>
-                  </div>
-                </li>
-                <li>
-                  <span>3</span>
-                  <div>
-                    <strong>서버 수집과 데이터 대조</strong>
-                    <p>
-                      시간별 수집을 구성하고 같은 조건의 광고 관리자 값과
-                      비교합니다.
-                    </p>
-                  </div>
-                </li>
-              </ol>
-              <p className="dialog-note">
-                <ShieldCheck size={17} aria-hidden="true" />이 화면에서는
-                비밀번호나 액세스 토큰을 입력받지 않습니다.
-              </p>
-              <Button
-                onClick={() => {
+              <InstagramConnectPanel
+                model={instagram}
+                onSample={() => {
                   setSample(true)
                   setDialog(null)
                 }}
-              >
-                <Eye aria-hidden="true" />
-                예시 데이터로 화면 둘러보기
-              </Button>
+              />
             </>
           )}
         </DialogContent>

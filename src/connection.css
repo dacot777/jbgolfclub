@@ -1,0 +1,175 @@
+.instagram-connect-panel {
+  display: grid;
+  gap: 16px;
+}
+.instagram-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.instagram-identity-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--secondary);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.instagram-identity > div {
+  min-width: 0;
+}
+.instagram-identity strong {
+  font-size: 16px;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.instagram-identity span:not(.instagram-identity-icon) {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.instagram-identity > [data-slot='badge'] {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.connection-explanation,
+.connection-setup-note p {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+}
+.connection-setup-note {
+  display: flex;
+  gap: 12px;
+  background: var(--muted);
+  padding: 16px;
+  border-radius: 10px;
+  align-items: start;
+}
+.connection-setup-note > svg {
+  margin-top: 3px;
+  color: var(--primary);
+}
+.connection-setup-note strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.connection-setup-note p {
+  margin-top: 5px;
+}
+.connection-warning {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 12px;
+  background: #faf3e5;
+  color: #735a29;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.connection-warning > svg {
+  margin-top: 3px;
+}
+.instagram-login-button {
+  width: 100%;
+  min-height: 46px;
+}
+.connection-facts {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 14px;
+}
+.connection-facts p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  font-size: 12px;
+}
+.connection-facts span {
+  color: var(--muted-foreground);
+}
+.connection-facts strong {
+  font-weight: 500;
+}
+.connection-facts .pending-access {
+  color: #735a29;
+}
+.connection-actions {
+  display: flex;
+  gap: 8px;
+}
+.connection-actions button {
+  flex: 1;
+}
+.disconnect-confirm {
+  border: 1px solid var(--border);
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.disconnect-confirm > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.connection-feedback {
+  padding: 20px 0;
+  display: grid;
+  gap: 14px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.connection-legal {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.connection-legal a {
+  text-decoration: underline;
+}
+.legal-page {
+  max-width: 760px;
+  margin: 40px auto;
+  padding: 32px;
+}
+.legal-page > a {
+  display: inline-block;
+  color: var(--primary);
+  font-size: 13px;
+  margin-bottom: 32px;
+}
+.legal-page h1 {
+  font-size: 28px;
+  margin-bottom: 28px;
+}
+.legal-page h2 {
+  font-size: 17px;
+  margin: 28px 0 8px;
+  font-weight: 600;
+}
+.legal-page > p:not(.eyebrow) {
+  font-size: 14px;
+  line-height: 1.95;
+  margin-top: 14px;
+  color: var(--muted-foreground);
+}
+.legal-page .legal-date {
+  padding-top: 30px;
+  font-size: 12px !important;
+}
+@media (max-width: 700px) {
+  .legal-page {
+    margin: 0;
+    padding: 30px 22px;
+  }
+  .legal-page h1 {
+    font-size: 25px;
+  }
+}

@@ -13,9 +13,17 @@ export default defineConfig({
         (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
     },
   },
-  webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
-    url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
+      url: 'http://127.0.0.1:5173',
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command:
+        'npm run dev -- --mode worker --host 127.0.0.1 --port 5174 --strictPort',
+      url: 'http://127.0.0.1:5174',
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 })

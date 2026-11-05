@@ -20,3 +20,7 @@ The user subsequently authorized site deployment. A GitHub Pages build using `/j
 ### Deployment result
 
 Source main `2538f62` and static gh-pages `b3acde6` were pushed successfully. GitHub Pages automatically activated and run 41959889315 completed with Success (31s), providing https://dacot777.github.io/jbgolfclub/. Direct public HTTP verification is blocked by this environment’s domain policy; the identical static build passed local browser checks. No hosting credentials or manual GitHub Pages settings were needed. The draft network additions used during API diagnosis are being removed because deployment completed through the existing Git route; no cloud environment publication is needed to make this website available.
+
+## Single Instagram login preparation
+
+The user requested one Instagram account and explicitly required Instagram-only site login and free tiers for future sites. Implemented the official Instagram login server flow, encrypted single-connection storage, protected sessions/disconnect/deletion, long-token maintenance, and frontend connection-state handling. Local server tests (9), browser tests (10), and the Worker frontend/type build passed. A real Instagram app, Cloudflare account authentication, allowed @username and owner approval remain missing; no real account has been connected. Advertising setup is still being clarified because basic Instagram login does not grant paid-ad metrics access. No new hosting subscription, paid plan or real credential collection was performed.
