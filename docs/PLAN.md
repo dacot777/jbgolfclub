@@ -16,3 +16,7 @@ Reusable configuration: install_script (npm ci + build) and start_skill (existin
 ## User-requested website deployment
 
 The user subsequently authorized site deployment. A GitHub Pages build using `/jbgolfclub/` was added and checked in a real browser under the same path. Git push access is verified; GitHub Pages API activation and public URL verification are currently blocked by the environment network allowlist. `api.github.com` and `dacot777.github.io` were saved as additive draft requirements. Source and static deployment branches are being prepared; do not treat preparation as a live website.
+
+### Deployment result
+
+Source main `2538f62` and static gh-pages `b3acde6` were pushed successfully. GitHub Pages automatically activated and run 41959889315 completed with Success (31s), providing https://dacot777.github.io/jbgolfclub/. Direct public HTTP verification is blocked by this environment’s domain policy; the identical static build passed local browser checks. No hosting credentials or manual GitHub Pages settings were needed. The draft network additions used during API diagnosis are being removed because deployment completed through the existing Git route; no cloud environment publication is needed to make this website available.

@@ -39,7 +39,9 @@ GitHub 접속에 사용하는 기존 인증과 HTTPS 프록시를 유지합니�
 npm run build:pages
 ```
 
-배포 브랜치는 `gh-pages`, 정적 파일 경로는 `/`입니다. 저장소 Settings → Pages의 Source를 **Deploy from a branch**, Branch를 **gh-pages / (root)**로 지정해야 합니다. 이는 실제 Meta API 서버의 배포를 포함하지 않습니다.
+공개 주소: **https://dacot777.github.io/jbgolfclub/**
+
+배포 브랜치는 `gh-pages`, 정적 파일 경로는 `/`이며 GitHub Pages가 자동 활성화되었습니다. 첫 배포의 GitHub 실행 기록은 성공입니다. 이는 실제 Meta API 서버의 배포를 포함하지 않습니다. 배포 상태와 갱신 절차는 [배포 기록](docs/DEPLOYMENT.md)을 참고하세요.
 
 ## 문서
 
