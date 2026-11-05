@@ -43,6 +43,8 @@
 
 ## 남은 계정 연결 작업
 
+사용자는 관리자 단계에서도 Facebook 계정을 사용하지 않습니다. 현재 확인한 신규 개발자 등록 절차는 Facebook 계정을 요구하므로 그 경로는 진행하지 않습니다. 사용자 화면에서 회사 비즈니스의 ‘추가된 앱 없음’과 ‘새 앱 ID 만들기’ 비활성화를 확인했고, 계정 연결은 **관리자 확인 대기**로 두었습니다. 비활성화의 정확한 원인은 확인되지 않았습니다. 아래 작업은 실제로 사용할 수 있는 앱 정보와 권한이 확보된 경우에만 진행합니다. [관리자 전달 메모](META_ACCOUNT_HANDOFF.md)를 참고하세요.
+
 1. Meta 개발자 앱에 **Instagram API with Instagram Login**을 설정합니다.
 2. 실제 [앱 설정 주소](INSTAGRAM_SETUP.md#현재-준비된-서버와-다음-입력값)와 callback URI를 등록합니다.
 3. Worker의 `INSTAGRAM_APP_ID`(Text), `INSTAGRAM_APP_SECRET`(Secret)을 입력합니다. 비밀키는 채팅에 보내지 않습니다.

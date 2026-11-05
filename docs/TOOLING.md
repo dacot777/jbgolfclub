@@ -110,3 +110,11 @@ Wrangler의 dry-run 패키징도 통과했습니다. 이 환경의 읽기 제한
 - 로컬 `wrangler.production.jsonc`는 Git 제외 경로에 생성했습니다. 배포 전후의 설치 의존성과 lockfile은 변경하지 않았습니다.
 - 서버 빌드 및 실제 로컬 Workers/D1의 9개 검사 통과. 실제 공개 서버의 홈페이지·API·법적 안내 경로와 Chromium 렌더링도 확인했습니다. 실제 Instagram OAuth·광고 실적 수집의 성공을 뜻하지 않습니다.
 - 생성 리소스와 실제 배포 버전, 남은 앱 설정은 [Cloudflare 배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 기록했습니다.
+
+### Meta 개발자 등록의 관리자 조건 확인
+
+2026-11-05 공식 https://developers.facebook.com/documentation/development/register 본문을 조회했습니다. Facebook 계정으로 로그인한 상태에서 개발자 등록을 시작하고 전화·이메일을 확인하도록 안내합니다. Instagram 로그인으로 Business Suite에 들어간 상태를 개발자 등록 성공으로 취급하지 않습니다. 로그인 전 앱 목록의 오류 페이지와 앱 생성 주소의 로그인 리디렉션은 실제 개발자 권한 확인의 증거가 아닙니다. 계정 소유자 또는 회사 담당자의 등록이 남아 있으며, 사이트의 Instagram 전용 로그인 구현은 유지합니다.
+
+이후 사용자가 관리자 단계에서도 Facebook 계정을 사용하지 않도록 명시했으므로 신규 개발자 등록 경로는 중단했습니다. 회사에 기존 소유 앱이 있는지 현재 Instagram/Meta 세션으로 확인하는 경로는 조사할 수 있지만, 유효한 앱 정보와 실제 광고 조회 권한은 아직 확보하지 못했습니다. Facebook 계정 사용을 대안으로 재요청하지 않습니다.
+
+회사 Business Suite 앱 화면에서 ‘추가된 앱 없음’, 추가 메뉴에서 ‘새 앱 ID 만들기’ 비활성화를 확인했습니다. 비활성화의 정확한 원인은 확정하지 않았습니다. 현재 사용자에게 추가 작업을 반복 요청하지 않고 관리자 확인 대기로 기록했으며, [관리자 전달 메모](META_ACCOUNT_HANDOFF.md)에 준비된 주소·현재 상태·필요한 확인사항을 정리했습니다. 홈페이지와 연결 상태 API는 실제 배포 확인용 요청에서 HTTP 200으로 응답했고, 연결 상태는 `configured: false`, `authenticated: false`, `advertisingAccess: false`였습니다.
