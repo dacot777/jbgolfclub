@@ -2,6 +2,7 @@
 
 - Read README.md, docs/DESIGN.md, docs/COST_POLICY.md and docs/INSTAGRAM_SETUP.md before changing the connection flow.
 - User requirement: all website work should stay within free service tiers. Do not opt into paid plans, subscriptions or automatic upgrades. Cloudflare Workers Free + D1 is the proposed connection backend; it has not yet been deployed or authenticated.
+- Absolute spending limit is zero. Do not purchase domains, enable paid APIs, subscribe or accept metered overage billing. If a free limit is hit, stop/degrade/optimize within free limits. Confirm Workers Free status before real Cloudflare deployment; do not assume a generic Cloudflare website Free label establishes the Workers plan.
 - User-facing sign-in must use official Instagram Login, not Facebook Login. Limit the connection to one configured Instagram username and the first verified numeric account ID. Multi-account functionality is deferred.
 - The user-provided account is @jbgolfacademy (https://www.instagram.com/jbgolfacademy/). This identifies the intended account only; it is not proof of authorization. Do not invent its numeric ID or real advertising results.
 - The user authorized necessary changes and deployment without repeated permission questions. Continue routine authorized work autonomously; only owner login, missing credentials, and external account verification require the user's own action. Stay within free tiers.
