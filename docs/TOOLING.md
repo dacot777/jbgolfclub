@@ -1,0 +1,90 @@
+# 도구·스킬 검토 및 적용 기록
+
+확인일: 2026-11-05. 아래 검토는 사용자 제공 목록과 별도로 실제 원문 조회 결과를 기록합니다. 설치, 원문을 읽고 적용, 참고, 보류를 구분합니다.
+
+## 연결 및 저장소 확인
+
+- 원격 main: `4df41cd466f3ca385f1b8a3baed767f3d9317956`. 사용자 첫 커밋 내용 확인 완료.
+- 이전 “proxy:8080 연결 실패”의 재현 시 기본 셸은 소켓을 `Operation not permitted`로 차단했습니다. 기존 프록시/인증을 유지한 승인 실행으로 Git 조회와 다운로드가 성공했습니다. GitHub 허용 목록·토큰을 바꾸지 않았습니다.
+
+## 실제 적용한 스킬
+
+| 이름 | 원문/버전 | 라이선스·범위 | 적용 및 검증 |
+| --- | --- | --- | --- |
+| UI/UX Pro Max | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill · source `ccce51cba388476d4f403091ddb91636d5cd9fed` · npm CLI `2.15.0` | MIT, 외부 커뮤니티 프로젝트. OpenAI 공식 스킬 아님. `.agents/skills/ui-ux-pro-max/` 프로젝트 범위 | README·SKILL 지침 읽음. 설치된 search.py의 UX·shadcn 검색 실행 성공. 현재 세션 자동 스킬 목록은 새로 고쳐지지 않아 자동 활성화는 확인되지 않음; 이번 작업은 직접 읽어 실행/적용. |
+| Vibe UX frontend-ui-engineering | https://github.com/tendtoyj/vibe-ux-skills · `7b66eed92dfd7333f81fa4df90e558980002e595` | 저장소 MIT. 임시 checkout에서 읽음; 전체 plugin 미설치 | 공통 토큰·합성 컴포넌트·데이터/표현 분리·실제 상태 문구에 적용. design-brandfit은 외부 DESIGN 변환용이라 이번 작업에 사용하지 않음. |
+| frontend-design | https://github.com/bear2u/my-skills · `8ed57847845fe88e9a4df445659b30b5a414fa09` | README에 MIT라고 명시; 해당 skill의 별도 LICENSE.txt는 확인하지 못함. 원문 지침만 읽음 | 골프 브랜드의 차분한 시각 방향과 타이포 위계에 참고. 스킬 전체를 재배포하거나 plugin 설치하지 않음. |
+
+### UI/UX 설치 절차 및 결과
+
+공식 README의 npm 패키지 이름을 따랐습니다. 소스 package.json의 2.5.0은 레지스트리에 없어 사용하지 않았고, npm에서 확인한 2.15.0을 고정했습니다. 배포본은 README와 달리 --dry-run을 지원하지 않아 help 확인 뒤 실행했습니다. 전역 변경·force 덮어쓰기·유료 자산 사용 없음. CLI가 함께 생성한 미사용 보조 스킬 6개는 이번 실행에서 생성된 것만 제거했습니다.
+
+```bash
+npm exec --yes --cache /tmp/jbgolf-npm-cache --package ui-ux-pro-max-cli@2.15.0 -- uipro init --ai codex --offline
+python3 .agents/skills/ui-ux-pro-max/scripts/search.py "keyboard focus modal" --domain ux -n 1
+python3 .agents/skills/ui-ux-pro-max/scripts/search.py "dashboard components" --stack shadcn -n 1
+```
+
+설치된 npm 패키지의 무결성은 npm 검증과 lockfile을 유지했습니다. GitHub 원문의 디자인 시스템 검색은 Data-Dense Dashboard와 Line Chart 지침이 제품에 적합했고, Enterprise Gateway 패턴은 좁힌 검색에서도 부적합해 적용하지 않았습니다. `docs/DESIGN.md`는 검증한 부분과 기존 골프 색상을 합성한 프로젝트 문서입니다.
+
+## 사용자 목록 전체 검토
+
+| 리소스·종류 | 확인한 출처와 커밋 | 라이선스 | 결정·적용 위치 |
+| --- | --- | --- | --- |
+| 21st-dev/magic-mcp · MCP | https://github.com/21st-dev/magic-mcp · `6b5299e8a83ceffa73d4fc4e148905bb3eeeeb55` | ISC | README의 21st MCP 전환 확인. 구형 proxy 설치 안 함. 현재 공식 설정 사이트 접근 제한, 인증·비용 미확인으로 연결 보류. |
+| Eldergenix/awesome-codex-app-template · 앱 운영 템플릿 | https://github.com/Eldergenix/awesome-codex-app-template · `3ba4166929cc977dbf69b89d310eee2e43a800d0` | MIT | 현재 README는 Enterprise Monorepo Template 안내. 디자인 토큰과 검증 문서 분리 참고. 전체 모노레포·추가 인증 도구 미도입. |
+| anomalyco/opencode · 별도 코딩 에이전트 | https://github.com/anomalyco/opencode · `6b4fdc28edd30f50d6b3c5e793413d8cee180221` | MIT | README·MIT 확인. 사용자 표의 제외 기준에 따라 Codex 필수 설치에 넣지 않음. |
+| magicuidesign/magicui · UI 컴포넌트 | https://github.com/magicuidesign/magicui · `37ce829f18dd7d0a7219531a4249b664419933ea` | MIT | 실제 Number Ticker 소스 채택. 한국어 숫자·모션 줄이기·스크린리더 최종값을 추가. 다른 효과·Pro 자산은 사용 안 함. |
+| nolly-studio/cult-ui · UI 컴포넌트 | https://github.com/nolly-studio/cult-ui · `d71b1428b811c2779d46ea41b7ef8c9f9c9991c2` | MIT | README·MIT·Tailwind 4/shadcn/Motion 호환 확인. 이번 보고 화면에서 필요한 동작은 기본 Tabs/Dialog로 충족하여 Cult 소스는 도입하지 않음. |
+| satnaing/shadcn-admin · 대시보드 예제 | https://github.com/satnaing/shadcn-admin · `e16c87f213a5ba5e45964e9b67c792105ec74d26` | MIT | 반응형 대시보드·사이드바·검색/필터 배치 참고. 앱의 인증·라우터·전체 예제는 이식하지 않음. |
+| shadcn-ui/ui · 기본 UI | https://github.com/shadcn-ui/ui · `8a3536678a528cc012b9e62484290e79d0be410f` | MIT | 실제 Button/Card/Badge/Dialog/Tabs 소스 채택, import 경로와 JB Golf 토큰에 맞춰 수정. 라이선스 보존. |
+| tremorlabs/tremor · 차트/대시보드 | https://github.com/tremorlabs/tremor · `ca4d588f47820ff3d514d37fa4ee08a4222dec11` | Apache-2.0 | React/Tailwind/Radix와 Apache 2.0 확인. 차트 대안으로 검토, 동일 역할은 Recharts 하나로 구현해 중복 패키지 미도입. |
+| xklob/codex-repo-template · 프로젝트 운영 템플릿 | https://github.com/xklob/codex-repo-template · `e49fc2314ff3fb35a3e758f70f92236722699f0d` | 파일 미확인 — 소스 미복사 | README/설계/구조/계획을 구분하는 문서 체계 참고. 원본 규칙·설정·코드는 복사하지 않음. 라이선스 파일 미확인. |
+| 21st.dev 공식 설정 · 서비스/MCP | https://21st.dev/mcp | 현재 이용 조건 미확인 | 프록시가 사이트 접속을 403으로 거부. GitHub의 전환 안내만 확인. API 키·구독을 요청하거나 연결하지 않음. |
+| Aceternity UI · 컴포넌트 | https://ui.aceternity.com/ | 무료/유료 항목별 조건 미확인 | 공식 사이트 접속 403. 전달된 미확인 GitHub 경로 대신 공식 사이트 기준을 유지. 소스·유료 블록 미사용. |
+| Cult 공식 문서 | https://www.cult-ui.com/docs | GitHub MIT 확인, 웹 문서 미확인 | 사이트는 403. 공식 링크와 설치/호환 안내는 검증된 GitHub README에서 확인. |
+| v0 · 별도 UI 서비스 | https://v0.app/ | 계정·기능별 비용 미확인 | 사이트 403. 사용자 표 기준 필수 도구에서 제외, 외부 계정 연결·유료 사용 없음. |
+
+## 실제 사용한 코드와 의존성
+
+- shadcn 소스: `apps/v4/registry/new-york-v4/ui/{button,card,badge,dialog,tabs}.tsx`, 위 표의 고정 커밋. 로컬 `src/components/ui/`로 옮기고 경로·테마를 조정했습니다.
+- Magic UI 소스: `apps/www/registry/magicui/number-ticker.tsx`, 위 표의 고정 커밋. `src/components/number-ticker.tsx`에 접근성/한국어/모션 설정을 추가했습니다.
+- 두 소스의 MIT 전문과 로컬 폰트 라이선스는 `docs/licenses/`에 있습니다.
+- 문서 템플릿의 계정 연결·MCP 설정·AGENTS 규칙은 복사하지 않았습니다.
+
+라이브러리 버전은 아래와 같으며 재현에는 package-lock.json과 npm ci를 사용합니다.
+
+| 패키지 | 설치 버전 | 범위 |
+| --- | --- | --- |
+| @fontsource-variable/dm-sans | 5.3.0 | dependencies |
+| @fontsource-variable/noto-sans-kr | 5.3.1 | dependencies |
+| class-variance-authority | 0.7.1 | dependencies |
+| clsx | 2.1.1 | dependencies |
+| lucide-react | 1.68.0 | dependencies |
+| motion | 14.9.1 | dependencies |
+| radix-ui | 1.8.1 | dependencies |
+| react | 19.3.1 | dependencies |
+| react-dom | 19.3.1 | dependencies |
+| recharts | 3.10.1 | dependencies |
+| tailwind-merge | 3.7.0 | dependencies |
+| @playwright/test | 1.64.1 | devDependencies |
+| @tailwindcss/vite | 4.3.4 | devDependencies |
+| @types/node | 26.6.6 | devDependencies |
+| @types/react | 19.3.0 | devDependencies |
+| @types/react-dom | 19.3.0 | devDependencies |
+| @vitejs/plugin-react | 6.2.1 | devDependencies |
+| tailwindcss | 4.3.4 | devDependencies |
+| typescript | 7.0.2 | devDependencies |
+| vite | 8.3.5 | devDependencies |
+
+포매터 Prettier 3.6.2(MIT)도 프로젝트 devDependency로 고정해 `npm run format`으로 사용합니다. 전역 설치는 하지 않았습니다.
+
+## 인증·비용·추가 접근
+
+현재 홈페이지는 키·로그인·유료 서비스 없이 실행됩니다. 21st MCP·v0·OpenCode를 설치/연결했다고 주장하지 않습니다. 공식 웹 문서 검토를 추가로 하려면 환경 설정에서 `21st.dev`, `ui.aceternity.com`, `www.cult-ui.com`, `v0.app` 접속 허용이 필요합니다. 관련 없는 기존 허용 목록은 바꾸지 않았습니다.
+
+Meta OAuth·실제 실적 수집·시간별 갱신은 미구현이며 인증·호스팅은 별도 작업입니다. 앱의 예시 모드는 데이터 연결의 증거가 아닙니다.
+
+## 검증
+
+TypeScript 및 Vite build 통과. Chromium Playwright 6개 검사 통과, 375·768·1024·1440px screenshot 수집 후 데스크톱/모바일 확인. 실제 Meta API 및 Ads Manager 대조는 수행하지 않았습니다. Git 원격에는 push하지 않았고 사이트/환경을 게시하지 않았습니다.

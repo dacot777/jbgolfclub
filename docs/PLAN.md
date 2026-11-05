@@ -1,0 +1,18 @@
+# Homepage implementation record
+
+Date: 2026-11-05
+
+1. Confirmed remote main commit `4df41cd466f3ca385f1b8a3baed767f3d9317956` and read its original `READM.md`. Fixed the local filename to README.md while retaining its project purpose.
+2. Diagnosed network failure: the default command sandbox disallowed sockets. The approved execution path succeeded with the existing proxy and authentication; the GitHub proxy was not proven broken.
+3. Read requested skill READMEs/instructions and all available listed GitHub README/license sources.
+4. Installed only the project-scoped UI/UX skill and required frontend dependencies. Generated and reviewed design recommendations, rejected the off-topic landing pattern, implemented the dashboard.
+5. TypeScript/build passed. Six Playwright tests passed: period/zero/CPA boundaries; disconnected/demo/report/copy/filter/export flow; 375/768/1024/1440px layout and modal behavior. Desktop and mobile screenshots were inspected.
+6. Code remains in the local task branch `codex/dashboard-homepage`. No commit/push, site deployment or environment publication was performed.
+
+Remaining: real Meta OAuth/API collection/database/hourly worker and comparison against the authenticated Ads Manager. Public-site reviews blocked by the domain allowlist remain listed in TOOLING.md. No external credentials were requested.
+
+Reusable configuration: install_script (npm ci + build) and start_skill (existing checkout, service startup, readiness checks, no worktrees/push/publication by default) were saved to the environment draft. This save did not publish or apply a new environment version. npm ci repeatability and the final six browser tests passed.
+
+## User-requested website deployment
+
+The user subsequently authorized site deployment. A GitHub Pages build using `/jbgolfclub/` was added and checked in a real browser under the same path. Git push access is verified; GitHub Pages API activation and public URL verification are currently blocked by the environment network allowlist. `api.github.com` and `dacot777.github.io` were saved as additive draft requirements. Source and static deployment branches are being prepared; do not treat preparation as a live website.
