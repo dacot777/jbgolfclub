@@ -6,6 +6,8 @@
 
 첫 기준 누적 2건·기간 기록 2건을 추가하고 원본 2건이 바이트 단위로 유지됨을 확인했습니다. 새 미래 기간은 만들지 않았습니다. 프론트엔드·Worker 빌드, 전체 브라우저/계산 40개, 로컬 Worker/D1 28개 검사 통과. 합성 자료로 누적과 증가분·과거 기간·코멘트 전환 및 음수/0/누락·고유 인원 제외를 검증했습니다.
 
+실제 무료 Worker 배포 후 HTTP 200, 스냅샷 6건의 출처/수치/날짜·메뉴 제거·조회 옵션 2개·원본 사진/미디어 메뉴·모바일을 확인했습니다. 전체 누적은 lifetime 2건, 지정 기간은 별도 selected_period 2건에서 읽는 것을 검증했습니다. [최신 배포](DEPLOYMENT.md).
+
 ## 2026-11-06 — 기사·블로그 자동 모니터링
 
 기존 Cloudflare Workers/D1/HTMLRewriter(브라우저/런타임 기본 기능)와 React/Lucide/Playwright/Wrangler를 재사용했습니다. 새 패키지·API 키·유료 검색·AI API는 도입하지 않았습니다. 출처: 공개 https://search.naver.com/search.naver 및 https://www.bing.com/news/search?format=rss, 기본 런타임 문서 https://developers.cloudflare.com/workers/runtime-apis/html-rewriter/.
