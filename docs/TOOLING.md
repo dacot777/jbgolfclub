@@ -1,5 +1,14 @@
 # 도구·스킬 검토 및 적용 기록
 
+## 2026-11-06 — 캡처 기반 인사이트 기록
+
+- 이름·종류: IndexedDB / FileReader / Blob, 브라우저 기본 Web API. 목적: 회사 광고 캡처·수치를 현재 브라우저에 보관하고 JSON 백업/복원. 출처: https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API · https://developer.mozilla.org/en-US/docs/Web/API/FileReader.
+- 버전·설치 범위: IndexedDB DB 스키마 1, 백업 포맷 `jbgolf-insights` v1. 현재 사이트 origin의 브라우저 저장소만 사용. 추가 패키지·설치 스크립트·전역 설정 변경 없음. 별도 배포 라이선스가 있는 제3자 코드를 복사하지 않았으며 사용 브라우저 구현의 조건을 따릅니다.
+- 인증·비용: 별도 인증·API 키·유료 기능 없음. 회사 광고 자료를 서버·D1·공개 번들에 저장하지 않음. 이미 설치한 React/shadcn/Radix/Lucide/Vite/Playwright를 재사용.
+- UI/UX Pro Max의 기존 설치를 재사용해 `error summary validation --domain ux` 검색을 실행. Forms/Accessibility의 포커스 가능한 오류 요약 및 읽기 가능한 오류 안내가 일치해 적용. 기존 디자인 토큰·한국어 입력 라벨·모바일 레이아웃 유지.
+- 인식·검증: Chromium의 실제 IndexedDB 저장·다시 읽기, 첨부 이미지 유지, 수정·보고 복사·삭제·JSON 백업 복원, 덮어쓰기 취소, 실패 상태, 375/768/1440px 확인을 포함해 전체 Playwright 18개 통과. 반올림·기간 미확인·결과 종류 분리·동일 기간 후속 캡처 중복 제외도 검증.
+- 도입 이유: 사용자가 지금은 광고 인사이트 캡처로 과거 기록을 남기고 자동 연결은 나중에 진행하도록 선택함. 외부 OCR/AI API와 새로운 서버 데이터 저장은 도입하지 않음. 사용법과 한계: [수동 기록 안내](MANUAL_INSIGHTS.md).
+
 확인일: 2026-11-05. 아래 검토는 사용자 제공 목록과 별도로 실제 원문 조회 결과를 기록합니다. 설치, 원문을 읽고 적용, 참고, 보류를 구분합니다.
 
 ## 연결 및 저장소 확인
