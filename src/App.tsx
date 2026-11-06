@@ -296,6 +296,8 @@ export default function App() {
             className="admin-entry-hitbox"
             aria-label="관리자 페이지 열기"
             title=""
+            onMouseDown={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
             onClick={openAdmin}
           />
         )}
@@ -303,11 +305,15 @@ export default function App() {
           href="#overview"
           className="brand academy-brand"
           aria-label="JB GOLF ACADEMY 대시보드"
+          draggable={false}
+          onMouseDown={(event) => event.preventDefault()}
+          onDragStart={(event) => event.preventDefault()}
         >
           <img
             className="academy-shield"
             src={shieldLogo}
             alt="JB GOLF ACADEMY 방패 로고"
+            draggable={false}
           />
           <span className="academy-brand-name">
             JB GOLF<span>ACADEMY</span>

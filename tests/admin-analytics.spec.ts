@@ -155,34 +155,115 @@ async function mockAdmin(
   }
 }
 
-test('로고 위 빈 공간을 세 번 누르면 인증 화면만 열리고 비공개 기록은 드러나지 않는다', async ({
+for (const width of [1440, 390, 320]) {
+  test(`${width}px 로고 위 실제 빈 좌표를 세 번 눌러도 선택·끌기 없이 인증 화면만 열린다`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const api = await mockAdmin(page)
+    await page.goto('/')
+    const entry = page.getByRole('button', {
+      name: '관리자 페이지 열기',
+      exact: true,
+    })
+    const shield = page.locator('.academy-brand .academy-shield')
+    await expect(entry).toBeVisible()
+    await expect(shield).toHaveAttribute('draggable', 'false')
+    const entryBox = await entry.boundingBox()
+    const shieldBox = await shield.boundingBox()
+    const sidebarBox = await page.locator('.sidebar').boundingBox()
+    expect(entryBox).not.toBeNull()
+    expect(shieldBox).not.toBeNull()
+    expect(sidebarBox).not.toBeNull()
+    expect(entryBox!.height).toBe(32)
+    expect(entryBox!.width).toBe(sidebarBox!.width)
+    expect(entryBox!.y + entryBox!.height).toBeLessThanOrEqual(shieldBox!.y)
+    const x = shieldBox!.x + shieldBox!.width / 2
+    const y = entryBox!.y + entryBox!.height / 2
+    expect(x).toBeGreaterThan(entryBox!.x)
+    expect(x).toBeLessThan(entryBox!.x + entryBox!.width)
+    await page.evaluate(() => {
+      document.documentElement.dataset.brandDrags = '0'
+      document.addEventListener('dragstart', (event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest('.academy-brand') &&
+          !event.defaultPrevented
+        )
+          document.documentElement.dataset.brandDrags = String(
+            Number(document.documentElement.dataset.brandDrags) + 1,
+          )
+      })
+    })
+    // A real pointer drag on the shield must not select or drag the logo.
+    await page.mouse.move(x, shieldBox!.y + shieldBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(x + 70, shieldBox!.y + shieldBox!.height + 20, {
+      steps: 10,
+    })
+    await page.mouse.up()
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+      '',
+    )
+    await expect(page.locator('html')).toHaveAttribute('data-brand-drags', '0')
+    await page.screenshot({
+      path: `/tmp/jbgolf-admin-entry-${width}.png`,
+    })
+    // Click at the blank pixel directly above the actual shield, rather than
+    // programmatically dispatching clickCount=3 to an arbitrary DOM node.
+    await page.mouse.click(x, y)
+    await page.mouse.click(x, y)
+    await expect(page).not.toHaveURL(/#admin$/)
+    await page.mouse.click(x, y)
+    await expect(page).toHaveURL(/#admin$/)
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+      '',
+    )
+    await expect(
+      page.getByRole('heading', { name: '관리자 로그인', exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByLabel('관리자 비밀번호', { exact: true }),
+    ).toHaveValue('')
+    await expect(
+      page.getByLabel('관리자 비밀번호', { exact: true }),
+    ).toHaveAttribute('type', 'password')
+    await expect(
+      page.getByText('방문자 TEST0001', { exact: true }),
+    ).toHaveCount(0)
+    expect(api.reports()).toBe(0)
+  })
+}
+
+test('로고의 한 번 클릭은 대시보드로 이동하고 본문 텍스트 선택은 유지한다', async ({
   page,
 }) => {
-  const api = await mockAdmin(page)
-  await page.goto('/')
-  const entry = page.getByRole('button', {
-    name: '관리자 페이지 열기',
-    exact: true,
-  })
-  await expect(entry).toBeVisible()
-  await entry.click()
-  await entry.click()
-  await expect(page).not.toHaveURL(/#admin$/)
-  await entry.click()
-  await expect(page).toHaveURL(/#admin$/)
+  await mockAdmin(page)
+  await page.goto('/#campaigns')
+  await page
+    .getByRole('link', { name: 'JB GOLF ACADEMY 대시보드', exact: true })
+    .click()
+  await expect(page).toHaveURL(/#overview$/)
   await expect(
     page.getByRole('heading', { name: '관리자 로그인', exact: true }),
-  ).toBeVisible()
-  await expect(page.getByLabel('관리자 비밀번호', { exact: true })).toHaveValue(
-    '',
+  ).toHaveCount(0)
+  await page.locator('.academy-brand-name').click({ clickCount: 3 })
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('')
+  await expect(page).toHaveURL(/#overview$/)
+  const heading = page.locator('#main h1').first()
+  await expect(heading).toBeVisible()
+  const headingBox = await heading.boundingBox()
+  expect(headingBox).not.toBeNull()
+  await page.mouse.click(
+    headingBox!.x + 12,
+    headingBox!.y + headingBox!.height / 2,
+    {
+      clickCount: 3,
+    },
   )
-  await expect(
-    page.getByLabel('관리자 비밀번호', { exact: true }),
-  ).toHaveAttribute('type', 'password')
-  await expect(page.getByText('방문자 TEST0001', { exact: true })).toHaveCount(
-    0,
-  )
-  expect(api.reports()).toBe(0)
+  expect(
+    await page.evaluate(() => window.getSelection()?.toString().trim()),
+  ).toBeTruthy()
 })
 
 test('잘못된 비밀번호는 기록을 읽지 못하고 인증 후에만 익명 방문과 메뉴 체류를 표시한다', async ({

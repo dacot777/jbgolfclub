@@ -168,13 +168,22 @@ h2 {
   position: absolute;
   touch-action: manipulation;
   top: 0;
-  left: 12px;
-  width: 180px;
-  height: 26px;
+  left: 0;
+  width: 100%;
+  height: 32px;
   border: 0;
   background: transparent;
   padding: 0;
   z-index: 1;
+}
+.admin-entry-hitbox,
+.brand.academy-brand,
+.brand.academy-brand * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.brand.academy-brand .academy-shield {
+  -webkit-user-drag: none;
 }
 .admin-entry-hitbox:focus-visible {
   outline: 2px solid var(--lime);
@@ -1976,14 +1985,7 @@ h1 {
     padding-top: 36px;
   }
   .admin-entry-hitbox {
-    height: 26px;
-    width: 110px;
-    left: 8px;
-  }
-}
-@media (max-width: 360px) {
-  .admin-entry-hitbox {
-    left: calc(50% - 55px);
+    height: 32px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
