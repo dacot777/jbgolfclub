@@ -15,6 +15,8 @@ import {
   LayoutDashboard,
   Link2,
   MousePointer2,
+  Newspaper,
+  NotebookText,
   Search,
   Settings2,
   ShieldCheck,
@@ -52,6 +54,7 @@ import { useReviewedPerformance } from '@/lib/reviewed-performance'
 import '@/reviewed-dashboard.css'
 
 const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
+const MediaWorkspace = lazy(() => import('@/components/media-workspace'))
 const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
 
 const WeeklyChart = lazy(() =>
@@ -115,13 +118,33 @@ export default function App() {
   const [descending, setDescending] = useState(true)
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
-  const [active, setActive] = useState('overview')
+  const [active, setActive] = useState(() =>
+    ['news', 'blog', 'weekly', 'campaigns'].includes(
+      window.location.hash.slice(1),
+    )
+      ? window.location.hash.slice(1)
+      : 'overview',
+  )
+  const isMedia = active === 'news' || active === 'blog'
   const instagram = useInstagramConnection()
   const reviewed = useReviewedPerformance()
   const showReviewed = !sample && Boolean(reviewed.data?.ads.length)
   const linkedInstagram = instagram.status?.authenticated
     ? instagram.status.connection
     : null
+  useEffect(() => {
+    const navigate = () => {
+      const target = window.location.hash.slice(1)
+      if (['overview', 'weekly', 'campaigns', 'news', 'blog'].includes(target))
+        setActive(target)
+      else if (!target) setActive('overview')
+    }
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
+  useEffect(() => {
+    if (isMedia) window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [active, isMedia])
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.hash === '#records') {
@@ -259,6 +282,8 @@ export default function App() {
             { id: 'overview', name: '성과 대시보드', icon: LayoutDashboard },
             { id: 'weekly', name: '주간업무보고', icon: ChartColumn },
             { id: 'campaigns', name: '광고 상세', icon: Target },
+            { id: 'news', name: '기사', icon: Newspaper },
+            { id: 'blog', name: '블로그', icon: NotebookText },
           ].map((item) => (
             <a
               key={item.id}
@@ -311,20 +336,28 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
-            <span>성과 대시보드</span>
+            <span>
+              {active === 'news'
+                ? '기사'
+                : active === 'blog'
+                  ? '블로그'
+                  : '성과 대시보드'}
+            </span>
           </div>
           <div className="topbar-right">
             <span className="connection-status">
               <i />
-              {showReviewed
+              {isMedia
                 ? '@jbgolfacademy'
-                : sample
-                  ? '예시 데이터 모드'
-                  : linkedInstagram
-                    ? linkedInstagram.needsReconnect
-                      ? 'Instagram 재연결 필요'
-                      : 'Instagram 연결됨 · 광고 권한 대기'
-                    : 'Instagram 계정 미연결'}
+                : showReviewed
+                  ? '@jbgolfacademy'
+                  : sample
+                    ? '예시 데이터 모드'
+                    : linkedInstagram
+                      ? linkedInstagram.needsReconnect
+                        ? 'Instagram 재연결 필요'
+                        : 'Instagram 연결됨 · 광고 권한 대기'
+                      : 'Instagram 계정 미연결'}
             </span>
             <button
               className="help-button"
@@ -339,7 +372,7 @@ export default function App() {
           </div>
         </header>
         <main id="main">
-          {reviewed.error && !sample && (
+          {reviewed.error && !sample && !isMedia && (
             <div className="reviewed-load-error" role="status">
               {reviewed.error}
               <Button variant="outline" onClick={() => void reviewed.reload()}>
@@ -347,7 +380,16 @@ export default function App() {
               </Button>
             </div>
           )}
-          {showReviewed ? (
+          {isMedia ? (
+            <Suspense
+              fallback={<p role="status">워크스페이스를 여는 중입니다.</p>}
+            >
+              <MediaWorkspace
+                key={active}
+                kind={active === 'news' ? 'news' : 'blog'}
+              />
+            </Suspense>
+          ) : showReviewed ? (
             <Suspense
               fallback={
                 <p role="status">확인된 광고 성과를 불러오는 중입니다.</p>

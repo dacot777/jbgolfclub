@@ -1,5 +1,11 @@
 # 도구·스킬 검토 및 적용 기록
 
+## 2026-11-06 — 기사·블로그 자동 모니터링
+
+기존 Cloudflare Workers/D1/HTMLRewriter(브라우저/런타임 기본 기능)와 React/Lucide/Playwright/Wrangler를 재사용했습니다. 새 패키지·API 키·유료 검색·AI API는 도입하지 않았습니다. 출처: 공개 https://search.naver.com/search.naver 및 https://www.bing.com/news/search?format=rss, 기본 런타임 문서 https://developers.cloudflare.com/workers/runtime-apis/html-rewriter/.
+
+9개 키워드를 각각 검색하고 일반인 블로그까지 포함합니다. DB 마이그레이션 0003, 고정 키워드 검색·URL 정리·중복 병합·단계별 자동 갱신·무료 범위의 캐시/보관 한도를 적용했습니다. 실제 공개 결과를 대조했고 프론트엔드·Worker 빌드, 브라우저/집계 32개, 로컬 Worker/D1 28개 검사 통과. 도입·운영 기준과 한계: [기사·블로그](MEDIA_MONITOR.md).
+
 ## 2026-11-06 — 제출용 화면 정리·실제 기간만 조회
 
 사용자 요청으로 ‘핵심 성과’ 제목·카드·합계 안내를 임시로 숨겼습니다. 겹치던 안내 문구의 음수 여백을 양수로 수정하고 긴 값의 줄바꿈도 보완했습니다. 조회 기간을 저장된 실제 집계 기간에서만 만들도록 변경해 미리 만든 월/주차와 빈 이력 표를 제거했습니다. 현재 누적 자료 2건과 광고 사진·수치·방패 로고·한 줄 결과는 유지합니다. 데이터/DB/인증/유료 서비스/패키지 변경은 없습니다.

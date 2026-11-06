@@ -1,6 +1,7 @@
 import type { Env, ConnectionRow, SessionRow } from './types'
 import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
+import { mediaFeed } from './media-feed'
 import {
   authorizationUrl,
   configuration,
@@ -256,6 +257,8 @@ async function api(request: Request, env: Env) {
     throw new ConnectionError('origin_not_allowed', 403)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
+  if (path === '/api/media' && request.method === 'GET')
+    return mediaFeed(request, env.DB)
   if (path === '/api/connection' && request.method === 'GET')
     return status(request, env)
   if (path === '/api/auth/instagram/start' && request.method === 'POST')
