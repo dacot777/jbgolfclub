@@ -232,6 +232,7 @@ export default function MediaWorkspace({ kind }: { kind: MediaKind }) {
       </section>
       <footer className="media-footer">
         <span>JB GOLF ACADEMY & CLUB</span>
+        <a href={`${import.meta.env.BASE_URL}privacy/`}>개인정보 처리 안내</a>
         <p>
           공개 검색에 노출된 글을 모으며, 게시물은 원문에서 확인할 수 있습니다.
         </p>

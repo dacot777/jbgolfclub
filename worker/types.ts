@@ -9,6 +9,8 @@ export interface Env {
   INSTAGRAM_ACCOUNT_USERNAME: string
   INSTAGRAM_API_VERSION: string
   TOKEN_ENCRYPTION_KEY: string
+  ADMIN_PASSWORD_VERIFIER?: string
+  ADMIN_ANALYTICS_KEY?: string
 }
 
 export interface ConnectionRow {

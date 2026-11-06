@@ -2,6 +2,7 @@ import type { Env, ConnectionRow, SessionRow } from './types'
 import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
+import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
 import {
   authorizationUrl,
   configuration,
@@ -255,6 +256,8 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
+  if (path.startsWith('/api/admin/') || path === '/api/analytics/event')
+    return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
   if (path === '/api/media' && request.method === 'GET')
@@ -383,6 +386,6 @@ export default {
     return secured
   },
   async scheduled(_event: unknown, env: Env) {
-    await maintainConnection(env)
+    await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
   },
 }

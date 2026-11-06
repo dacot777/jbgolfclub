@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -51,10 +51,12 @@ import {
   instagramErrors,
 } from '@/lib/instagram-connection'
 import { useReviewedPerformance } from '@/lib/reviewed-performance'
+import { useVisitorTracker } from '@/lib/visitor-tracker'
 import '@/reviewed-dashboard.css'
 
 const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
 const MediaWorkspace = lazy(() => import('@/components/media-workspace'))
+const AdminAnalytics = lazy(() => import('@/components/admin-analytics'))
 const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
 
 const WeeklyChart = lazy(() =>
@@ -119,11 +121,24 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState(() =>
-    ['news', 'blog', 'campaigns'].includes(window.location.hash.slice(1))
+    ['news', 'blog', 'campaigns', 'admin'].includes(
+      window.location.hash.slice(1),
+    )
       ? window.location.hash.slice(1)
       : 'overview',
   )
   const isMedia = active === 'news' || active === 'blog'
+  const isAdmin = active === 'admin'
+  const adminClicks = useRef({ count: 0, lastAt: 0 })
+  useVisitorTracker(
+    isAdmin
+      ? null
+      : dialog === 'connect'
+        ? 'connection'
+        : active === 'campaigns' || active === 'news' || active === 'blog'
+          ? active
+          : 'overview',
+  )
   const instagram = useInstagramConnection()
   const reviewed = useReviewedPerformance()
   const showReviewed = !sample && Boolean(reviewed.data?.ads.length)
@@ -140,7 +155,9 @@ export default function App() {
           window.location.pathname + window.location.search + '#overview',
         )
         setActive('overview')
-      } else if (['overview', 'campaigns', 'news', 'blog'].includes(target))
+      } else if (
+        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
+      )
         setActive(target)
       else if (!target) setActive('overview')
     }
@@ -148,8 +165,9 @@ export default function App() {
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
   useEffect(() => {
-    if (isMedia) window.scrollTo({ top: 0, behavior: 'instant' })
-  }, [active, isMedia])
+    adminClicks.current = { count: 0, lastAt: 0 }
+    if (isMedia || isAdmin) window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [active, isMedia, isAdmin])
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.hash === '#records' || url.hash === '#weekly') {
@@ -199,6 +217,19 @@ export default function App() {
     setSample((v) => !v)
     setCopied(false)
     setMessage('')
+  }
+  function openAdmin() {
+    const now = performance.now()
+    const clicks = adminClicks.current
+    clicks.count = now - clicks.lastAt <= 1800 ? clicks.count + 1 : 1
+    clicks.lastAt = now
+    if (clicks.count < 3) return
+    clicks.count = 0
+    setDialog(null)
+    setSample(false)
+    setMessage('')
+    window.location.hash = 'admin'
+    setActive('admin')
   }
   async function copyReport() {
     try {
@@ -259,6 +290,15 @@ export default function App() {
         본문으로 바로가기
       </a>
       <aside className="sidebar">
+        {active === 'overview' && (
+          <button
+            type="button"
+            className="admin-entry-hitbox"
+            aria-label="관리자 페이지 열기"
+            title=""
+            onClick={openAdmin}
+          />
+        )}
         <a
           href="#overview"
           className="brand academy-brand"
@@ -341,27 +381,31 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {active === 'news'
-                ? '기사'
-                : active === 'blog'
-                  ? '블로그'
-                  : '성과 대시보드'}
+              {isAdmin
+                ? '관리자'
+                : active === 'news'
+                  ? '기사'
+                  : active === 'blog'
+                    ? '블로그'
+                    : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
             <span className="connection-status">
               <i />
-              {isMedia
-                ? '@jbgolfacademy'
-                : showReviewed
+              {isAdmin
+                ? '관리자 전용'
+                : isMedia
                   ? '@jbgolfacademy'
-                  : sample
-                    ? '예시 데이터 모드'
-                    : linkedInstagram
-                      ? linkedInstagram.needsReconnect
-                        ? 'Instagram 재연결 필요'
-                        : 'Instagram 연결됨 · 광고 권한 대기'
-                      : 'Instagram 계정 미연결'}
+                  : showReviewed
+                    ? '@jbgolfacademy'
+                    : sample
+                      ? '예시 데이터 모드'
+                      : linkedInstagram
+                        ? linkedInstagram.needsReconnect
+                          ? 'Instagram 재연결 필요'
+                          : 'Instagram 연결됨 · 광고 권한 대기'
+                        : 'Instagram 계정 미연결'}
             </span>
             <button
               className="help-button"
@@ -376,7 +420,7 @@ export default function App() {
           </div>
         </header>
         <main id="main">
-          {reviewed.error && !sample && !isMedia && (
+          {reviewed.error && !sample && !isMedia && !isAdmin && (
             <div className="reviewed-load-error" role="status">
               {reviewed.error}
               <Button variant="outline" onClick={() => void reviewed.reload()}>
@@ -384,7 +428,13 @@ export default function App() {
               </Button>
             </div>
           )}
-          {isMedia ? (
+          {isAdmin ? (
+            <Suspense
+              fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
+            >
+              <AdminAnalytics />
+            </Suspense>
+          ) : isMedia ? (
             <Suspense
               fallback={<p role="status">워크스페이스를 여는 중입니다.</p>}
             >
@@ -1024,6 +1074,9 @@ export default function App() {
                   연결 도움말
                   <ArrowUpRight size={13} aria-hidden="true" />
                 </button>
+                <a href={`${import.meta.env.BASE_URL}privacy/`}>
+                  개인정보 처리 안내
+                </a>
               </footer>
             </>
           )}

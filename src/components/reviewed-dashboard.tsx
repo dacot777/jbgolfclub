@@ -540,7 +540,7 @@ export default function ReviewedDashboard({
       )}
       <footer className="page-footer">
         <span>JB GOLF ACADEMY</span>
-        <span>광고 성과 대시보드</span>
+        <a href={`${import.meta.env.BASE_URL}privacy/`}>개인정보 처리 안내</a>
       </footer>
     </div>
   )

@@ -164,6 +164,21 @@ h2 {
   flex-direction: column;
   z-index: 30;
 }
+.admin-entry-hitbox {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  width: 180px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  z-index: 1;
+}
+.admin-entry-hitbox:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: -3px;
+}
 .brand {
   display: flex;
   gap: 12px;
@@ -1953,6 +1968,21 @@ h1 {
   .sidebar .nav-link {
     min-width: 0;
     padding-inline: 0;
+  }
+}
+@media (max-width: 700px) {
+  .sidebar {
+    padding-top: 36px;
+  }
+  .admin-entry-hitbox {
+    height: 26px;
+    width: 110px;
+    left: 8px;
+  }
+}
+@media (max-width: 360px) {
+  .admin-entry-hitbox {
+    left: calc(50% - 55px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
