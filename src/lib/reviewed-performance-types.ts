@@ -53,6 +53,9 @@ export interface ReviewedSnapshot {
   reviewedAt: string
   sourceLabel: string
   notes: string
+  basis?: 'screenshot' | 'user_assigned' | 'cumulative_difference'
+  sourceSnapshotIds?: string[]
+  commentary?: string | null
 }
 
 export interface ReviewedPerformanceData {

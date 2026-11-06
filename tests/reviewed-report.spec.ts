@@ -89,7 +89,7 @@ test('같은 날짜의 최신 검토본만 선택하며 과거 주와 누적 캡
   const nextWeek = snapshot({
     id: 'next',
     period: { start: '2026-11-08', end: '2026-11-14' },
-    reviewedAt: '2026-11-15T00:00:00Z',
+    reviewedAt: '2026-11-17T00:00:00Z',
     metrics: metrics({ spend: 1400 }),
   })
   const lifetime = snapshot({
@@ -126,10 +126,15 @@ test('같은 날짜의 최신 검토본만 선택하며 과거 주와 누적 캡
   expect(input.snapshots).toHaveLength(6)
 })
 
-test('시각대가 달라도 실제 검토 시각을 비교하고 같은 광고의 중복 합계를 막는다', () => {
-  const later = snapshot({ id: 'utc', reviewedAt: '2026-11-08T01:00:00Z' })
+test('시각대가 달라도 실제 누적 검토 시각을 비교하고 같은 광고의 중복 합계를 막는다', () => {
+  const later = snapshot({
+    id: 'utc',
+    scope: 'lifetime',
+    reviewedAt: '2026-11-08T01:00:00Z',
+  })
   const earlier = snapshot({
     id: 'kst',
+    scope: 'lifetime',
     reviewedAt: '2026-11-08T09:30:00+09:00',
     metrics: metrics({ spend: 99 }),
   })

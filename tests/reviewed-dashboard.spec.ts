@@ -122,6 +122,9 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
   await expect(
     page.getByRole('heading', { name: '한 줄 결과', exact: true }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: '주간업무보고', exact: true }),
+  ).toHaveCount(0)
   await expect(page.locator('.reviewed-ad-period')).toContainText(
     '집계 날짜 확인 중',
   )
@@ -277,7 +280,13 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
   page,
 }) => {
   const weeks = data([
-    snapshot(),
+    snapshot({
+      id: 'current-cumulative',
+      scope: 'lifetime',
+      period: { start: '2026-11-01', end: '2026-11-14' },
+      reviewedAt: '2026-11-15T00:00:00Z',
+      metrics: metrics({ spend: 3300 }),
+    }),
     snapshot({
       id: 'first-week-old',
       scope: 'selected_period',
@@ -296,7 +305,7 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
       id: 'second-week',
       scope: 'selected_period',
       period: { start: '2026-11-08', end: '2026-11-14' },
-      reviewedAt: '2026-11-15T00:00:00Z',
+      reviewedAt: '2026-11-15T01:00:00Z',
       metrics: metrics({ spend: 2200 }),
     }),
   ])
@@ -338,6 +347,104 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
     .filter({ hasText: '2026.11.01 — 2026.11.07' })
   await expect(row).toContainText('1,100원')
   await expect(row).not.toContainText('1,500원')
+  await page
+    .getByRole('combobox', { name: /^조회 기간/ })
+    .selectOption('latest')
+  await expect(adValues(page)).toContainText('3,300원')
+  await expect(adValues(page)).not.toContainText('2,200원')
+})
+
+test('사용자 기준 기간·순증 기간·전체 누적을 분리하고 저장한 한 줄 코멘트를 표시한다', async ({
+  page,
+}) => {
+  const baselinePeriod = { start: '2026-10-29', end: '2026-11-06' }
+  const incrementPeriod = { start: '2026-11-07', end: '2026-11-13' }
+  const baselineMetrics = metrics({
+    spend: 900,
+    profileVisits: 9,
+    profileVisitCost: 100,
+    views: 90,
+    viewers: 50,
+    linkClicks: 6,
+  })
+  const currentMetrics = metrics({
+    spend: 1600,
+    profileVisits: 16,
+    profileVisitCost: 100,
+    views: 160,
+    viewers: 80,
+    linkClicks: 10,
+  })
+  const comment =
+    '방문당 비용은 유지됐고, 이번 기간 프로필 방문 7회가 추가됐습니다.'
+  const value = data([
+    snapshot(),
+    snapshot({
+      id: 'baseline-cumulative',
+      period: baselinePeriod,
+      scope: 'lifetime',
+      basis: 'user_assigned',
+      sourceSnapshotIds: ['synthetic-lifetime'],
+      metrics: baselineMetrics,
+      reviewedAt: '2026-11-06T02:00:00Z',
+    }),
+    snapshot({
+      id: 'baseline-period',
+      period: baselinePeriod,
+      scope: 'selected_period',
+      basis: 'user_assigned',
+      sourceSnapshotIds: ['baseline-cumulative'],
+      metrics: baselineMetrics,
+      reviewedAt: '2026-11-06T02:01:00Z',
+    }),
+    snapshot({
+      id: 'current-cumulative',
+      period: { start: baselinePeriod.start, end: incrementPeriod.end },
+      scope: 'lifetime',
+      metrics: currentMetrics,
+      reviewedAt: '2026-11-13T01:00:00Z',
+    }),
+    snapshot({
+      id: 'newer-weekly-difference',
+      period: incrementPeriod,
+      scope: 'selected_period',
+      basis: 'cumulative_difference',
+      sourceSnapshotIds: ['baseline-cumulative', 'current-cumulative'],
+      metrics: metrics({
+        spend: 700,
+        profileVisits: 7,
+        profileVisitCost: 100,
+        views: 70,
+        viewers: null,
+        linkClicks: 4,
+      }),
+      commentary: comment,
+      reviewedAt: '2026-11-13T01:10:00Z',
+    }),
+  ])
+  await mockData(page, value)
+  await page.goto('/')
+  const period = page.getByRole('combobox', { name: /^조회 기간/ })
+  await expect(period).toHaveValue('2026-11-07|2026-11-13')
+  await expect(period.locator('option')).toHaveCount(3)
+  await expect(page.locator('.reviewed-report-text')).toHaveText(comment)
+  await expect(adValues(page)).toContainText('700원')
+  await expect(
+    adValues(page).getByText('조회한 사람', { exact: true }),
+  ).toHaveCount(0)
+  await period.selectOption('latest')
+  await expect(adValues(page)).toContainText('1,600원')
+  await expect(adValues(page)).not.toContainText('700원')
+  await expect(page.locator('.reviewed-report-text')).not.toContainText(comment)
+  await period.selectOption('2026-10-29|2026-11-06')
+  await expect(adValues(page)).toContainText('900원')
+  await expect(page.locator('.reviewed-ad-period')).toContainText(
+    '2026.10.29 — 2026.11.06',
+  )
+  await expect(page.locator('.reviewed-history-table tbody tr')).toHaveCount(2)
+  await expect(
+    page.getByRole('link', { name: '주간업무보고', exact: true }),
+  ).toHaveCount(0)
 })
 
 test('자료 조회 실패는 연결 성공이나 실제 0원으로 표시하지 않고 재시도할 수 있다', async ({

@@ -81,6 +81,14 @@ function resultSummary(
   rows: ReviewedSnapshot[],
 ) {
   if (!rows.length) return '선택한 기간의 성과 자료를 기다리고 있습니다.'
+  const comments = [
+    ...new Set(
+      rows
+        .map((row) => row.commentary?.trim())
+        .filter((comment): comment is string => Boolean(comment)),
+    ),
+  ]
+  if (comments.length) return comments.join('\n')
   return rows
     .map((row) => {
       const title = data.ads.find((ad) => ad.id === row.adId)?.title ?? '광고'
@@ -339,7 +347,7 @@ export default function ReviewedDashboard({
       </section>
 
       <section
-        id="weekly"
+        id="result-summary"
         className="report-card"
         aria-labelledby="reviewed-report-title"
       >

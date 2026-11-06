@@ -164,6 +164,9 @@ test('서버에 보관한 확정/미확인 기간과 0/누락을 그대로 읽�
         linkClickCost: 7,
         landingPageViews: 2,
       },
+      basis: 'user_assigned',
+      sourceSnapshotIds: [unknown.id],
+      commentary: '이전 기록과 비교할 기준을 확인한 합성 코멘트입니다.',
     })
     await f.insertAd(reviewedAd)
     await f.insertSnapshot(unknown)
@@ -183,10 +186,16 @@ test('서버에 보관한 확정/미확인 기간과 0/누락을 그대로 읽�
     assert.equal(data.snapshots[0].metrics.video3s, null)
     assert.equal(data.snapshots[0].metrics.linkClickCost, null)
     assert.equal(data.snapshots[0].metrics.landingPageViews, null)
+    assert.equal(data.snapshots[0].basis, 'screenshot')
+    assert.deepEqual(data.snapshots[0].sourceSnapshotIds, [])
+    assert.equal(data.snapshots[0].commentary, null)
     assert.equal(data.snapshots[1].metrics.websiteVisits, 5)
     assert.equal(data.snapshots[1].metrics.profileVisits, null)
     assert.equal(data.snapshots[1].metrics.linkClickCost, 7)
     assert.equal(data.snapshots[1].metrics.landingPageViews, 2)
+    assert.equal(data.snapshots[1].basis, 'user_assigned')
+    assert.deepEqual(data.snapshots[1].sourceSnapshotIds, [unknown.id])
+    assert.equal(data.snapshots[1].commentary, selected.commentary)
     assert.deepEqual(data.snapshots[1].period, {
       start: '2026-01-01',
       end: '2026-01-07',
@@ -255,6 +264,14 @@ test('잘못된 날짜·부분 기간·수치·외부 링크를 실제 실적으
       snapshot({ reportedDays: 0 }),
       snapshot({ metrics: { ...snapshot().metrics, linkClickCost: -1 } }),
       snapshot({ metrics: { ...snapshot().metrics, landingPageViews: '2' } }),
+      snapshot({ basis: 'invented' }),
+      snapshot({ sourceSnapshotIds: null }),
+      snapshot({ sourceSnapshotIds: 'test-snapshot-a' }),
+      snapshot({ sourceSnapshotIds: ['a', 'b', 'c', 'd', 'e'] }),
+      snapshot({ sourceSnapshotIds: ['same', 'same'] }),
+      snapshot({ sourceSnapshotIds: ['invalid source id'] }),
+      snapshot({ commentary: 1 }),
+      snapshot({ commentary: 'x'.repeat(601) }),
     ]
     for (const value of cases) {
       await f.insertSnapshot(value)

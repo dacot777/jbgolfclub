@@ -119,9 +119,7 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState(() =>
-    ['news', 'blog', 'weekly', 'campaigns'].includes(
-      window.location.hash.slice(1),
-    )
+    ['news', 'blog', 'campaigns'].includes(window.location.hash.slice(1))
       ? window.location.hash.slice(1)
       : 'overview',
   )
@@ -135,7 +133,14 @@ export default function App() {
   useEffect(() => {
     const navigate = () => {
       const target = window.location.hash.slice(1)
-      if (['overview', 'weekly', 'campaigns', 'news', 'blog'].includes(target))
+      if (target === 'weekly') {
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search + '#overview',
+        )
+        setActive('overview')
+      } else if (['overview', 'campaigns', 'news', 'blog'].includes(target))
         setActive(target)
       else if (!target) setActive('overview')
     }
@@ -147,7 +152,7 @@ export default function App() {
   }, [active, isMedia])
   useEffect(() => {
     const url = new URL(window.location.href)
-    if (url.hash === '#records') {
+    if (url.hash === '#records' || url.hash === '#weekly') {
       url.hash = 'overview'
       window.history.replaceState(
         null,
@@ -280,7 +285,6 @@ export default function App() {
         <nav aria-label="주 메뉴">
           {[
             { id: 'overview', name: '성과 대시보드', icon: LayoutDashboard },
-            { id: 'weekly', name: '주간업무보고', icon: ChartColumn },
             { id: 'campaigns', name: '광고 상세', icon: Target },
             { id: 'news', name: '기사', icon: Newspaper },
             { id: 'blog', name: '블로그', icon: NotebookText },

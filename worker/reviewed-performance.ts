@@ -168,6 +168,29 @@ export function validateReviewedSnapshot(value: unknown): ReviewedSnapshot {
   const reportedDays =
     raw.reportedDays === null ? null : integer(raw.reportedDays)
   if (reportedDays === 0) throw new Error('Invalid reported duration')
+  const basis = raw.basis === undefined ? 'screenshot' : raw.basis
+  if (
+    !['screenshot', 'user_assigned', 'cumulative_difference'].includes(
+      String(basis),
+    )
+  )
+    throw new Error('Invalid reviewed basis')
+  if (
+    raw.sourceSnapshotIds !== undefined &&
+    (!Array.isArray(raw.sourceSnapshotIds) || raw.sourceSnapshotIds.length > 4)
+  )
+    throw new Error('Invalid reviewed source snapshots')
+  const sourceSnapshotIds = (
+    raw.sourceSnapshotIds === undefined
+      ? []
+      : (raw.sourceSnapshotIds as unknown[])
+  ).map(identifier)
+  if (new Set(sourceSnapshotIds).size !== sourceSnapshotIds.length)
+    throw new Error('Duplicate reviewed source snapshot')
+  const commentary =
+    raw.commentary === undefined || raw.commentary === null
+      ? null
+      : text(raw.commentary, 600, true)
   return {
     id: identifier(raw.id),
     adId: identifier(raw.adId),
@@ -178,6 +201,9 @@ export function validateReviewedSnapshot(value: unknown): ReviewedSnapshot {
     reviewedAt: reviewedAt(raw.reviewedAt),
     sourceLabel: text(raw.sourceLabel, 200),
     notes: text(raw.notes, 4000, true),
+    basis: basis as ReviewedSnapshot['basis'],
+    sourceSnapshotIds,
+    commentary,
   }
 }
 

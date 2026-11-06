@@ -87,11 +87,12 @@ function latestPerAd(rows: ReviewedSnapshot[]) {
   return [...latest.values()]
 }
 
-/** Select exact confirmed dates only. Lifetime snapshots never become weekly data. */
+/** Cumulative and incremental records are separate; never use a weekly delta as a lifetime total. */
 export function rowsForSelection(data: ReviewedPerformanceData, key: string) {
   const knownAdIds = new Set(data.ads.map((ad) => ad.id))
   const known = data.snapshots.filter((row) => knownAdIds.has(row.adId))
-  if (key === 'latest') return latestPerAd(known)
+  if (key === 'latest')
+    return latestPerAd(known.filter((row) => row.scope === 'lifetime'))
   const period = readPeriod(key)
   if (!period) return []
   return latestPerAd(

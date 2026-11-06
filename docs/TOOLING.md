@@ -1,5 +1,11 @@
 # 도구·스킬 검토 및 적용 기록
 
+## 2026-11-06 — 첫 보고 기준과 주간 증가분 분리
+
+기존 무료 D1과 개발 도구를 재사용해 사용자 지정 첫 기간을 원본과 별도 보관합니다. 주간업무보고 메뉴 제거, 최신 lifetime 전용 누적 선택, 누적 원본 두 개의 증가분 계산, 고유 인원 제외·결과당 비용 재계산·음수/누락 검증, 출처 ID와 사용자 지정 구간 표시를 구현했습니다. 향후 실제 분석 코멘트 저장 필드를 추가했으며 새 서비스·패키지·유료 AI API는 없습니다. [운영 기준](PERIOD_LEDGER.md).
+
+첫 기준 누적 2건·기간 기록 2건을 추가하고 원본 2건이 바이트 단위로 유지됨을 확인했습니다. 새 미래 기간은 만들지 않았습니다. 프론트엔드·Worker 빌드, 전체 브라우저/계산 40개, 로컬 Worker/D1 28개 검사 통과. 합성 자료로 누적과 증가분·과거 기간·코멘트 전환 및 음수/0/누락·고유 인원 제외를 검증했습니다.
+
 ## 2026-11-06 — 기사·블로그 자동 모니터링
 
 기존 Cloudflare Workers/D1/HTMLRewriter(브라우저/런타임 기본 기능)와 React/Lucide/Playwright/Wrangler를 재사용했습니다. 새 패키지·API 키·유료 검색·AI API는 도입하지 않았습니다. 출처: 공개 https://search.naver.com/search.naver 및 https://www.bing.com/news/search?format=rss, 기본 런타임 문서 https://developers.cloudflare.com/workers/runtime-apis/html-rewriter/.
