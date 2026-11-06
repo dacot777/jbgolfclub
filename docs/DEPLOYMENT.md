@@ -1,5 +1,17 @@
 # GitHub Pages 배포 기록
 
+## 2026-11-06 — 인사이트 수동 기록 화면 배포
+
+- 실제 주소: https://jbgolf-connection.jbgolfacademy.workers.dev/#records
+- 소스: `9a431a4` (main). Cloudflare Worker 버전: `5d506aa3-1d80-46fc-9e38-b13bf5ccd813`.
+- 기존 Workers Free에 정적 자산 5개 갱신(126개 재사용). 사용자가 제공한 Workers Free · Active 화면의 확인을 유지하며 플랜·결제·유료 API·새 리소스를 추가하지 않았습니다.
+- 기존 D1 DB ID와 TOKEN_ENCRYPTION_KEY Secret 바인딩을 배포 후 재확인했습니다. 원격 공개 환경 변수는 ignored 설정에 보존했고 비밀 값은 읽거나 변경하지 않았습니다.
+- `npm run build`, `npm run build:worker`, Playwright 18개, 기존 Worker/D1 검사 9개 통과.
+- 실제 HTTPS Chromium에서 #records HTTP 200, 비공개 파일 2건 가져오기·새로고침 후 유지, 기간 미확인 2건, 모바일 넘침 없음, JavaScript 오류/자산 실패/자료 POST 요청 모두 0을 확인했습니다. 테스트 기록은 별도 테스트 브라우저 안에만 저장됐으며 사용자의 브라우저를 원격 조작한 것이 아닙니다.
+- 기존 `/api/connection` HTTP 200: configured=false, authenticated=false, advertisingAccess=false. `/privacy`, `/data-deletion` HTTP 200. Meta 자동 연동은 미설정이며 cron은 기존 토큰 유지 작업 그대로입니다.
+- 앞선 두 광고는 사용자용 비공개 JSON 파일로 준비했습니다. 회사 광고 수치와 원본 이미지는 공개 소스/번들에 넣지 않았습니다. 원본 이미지는 파일로 제공되지 않아 미첨부입니다.
+- 기존 GitHub Pages 정적 배포를 유지했습니다. 이번 기능의 배포 대상은 위 workers.dev 주소입니다.
+
 - 공개 주소: https://dacot777.github.io/jbgolfclub/
 - 원본 저장소: https://github.com/dacot777/jbgolfclub
 - 첫 소스 커밋: `2538f620ef0e70b9387e6f41f7e0f1e8c4701841` (`main`)
