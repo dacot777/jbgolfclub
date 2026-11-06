@@ -166,6 +166,7 @@ h2 {
 }
 .admin-entry-hitbox {
   position: absolute;
+  touch-action: manipulation;
   top: 0;
   left: 12px;
   width: 180px;
