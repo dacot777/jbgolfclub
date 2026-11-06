@@ -38,6 +38,18 @@ function integer(value: unknown): number {
   return value
 }
 
+function nullableBoolean(value: unknown): boolean | null {
+  if (value !== null && typeof value !== 'boolean')
+    throw new Error('Invalid reviewed targeting toggle')
+  return value
+}
+
+function textList(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 20)
+    throw new Error('Invalid reviewed targeting list')
+  return value.map((item) => text(item, 100))
+}
+
 function date(value: unknown): string {
   const result = text(value, 10)
   if (
@@ -79,6 +91,16 @@ export function validateReviewedAd(value: unknown): ReviewedAd {
     )
   )
     throw new Error('Invalid Instagram post URL')
+  let thumbnailUrl: string | null = null
+  if (raw.thumbnailUrl !== undefined && raw.thumbnailUrl !== null) {
+    thumbnailUrl = text(raw.thumbnailUrl, 200)
+    if (
+      !/^\/media\/posts\/[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)$/.test(
+        thumbnailUrl,
+      )
+    )
+      throw new Error('Invalid reviewed thumbnail path')
+  }
   if (!['active', 'paused', 'unknown'].includes(String(raw.status)))
     throw new Error('Invalid reviewed status')
   let schedule: ReviewedAd['schedule'] = null
@@ -86,18 +108,44 @@ export function validateReviewedAd(value: unknown): ReviewedAd {
     const source = object(raw.schedule)
     schedule = {
       ...period(source),
-      dailyBudget: integer(source.dailyBudget),
+      dailyBudget:
+        source.dailyBudget === null ? null : integer(source.dailyBudget),
+      totalBudget:
+        source.totalBudget === undefined || source.totalBudget === null
+          ? null
+          : integer(source.totalBudget),
       durationDays: integer(source.durationDays),
     }
     if (!schedule.durationDays) throw new Error('Invalid reviewed duration')
+  }
+  let targeting: ReviewedAd['targeting'] = null
+  if (raw.targeting !== undefined && raw.targeting !== null) {
+    const source = object(raw.targeting)
+    const ageMin = integer(source.ageMin)
+    const ageMax = integer(source.ageMax)
+    if (ageMin > ageMax || ageMax > 120)
+      throw new Error('Invalid reviewed targeting ages')
+    targeting = {
+      locations: textList(source.locations),
+      ageMin,
+      ageMax,
+      interests: textList(source.interests),
+      locationOptimization: nullableBoolean(source.locationOptimization),
+      advantageDetailedTargeting: nullableBoolean(
+        source.advantageDetailedTargeting,
+      ),
+      advantageAudience: nullableBoolean(source.advantageAudience),
+    }
   }
   return {
     id: identifier(raw.id),
     title: text(raw.title, 200),
     postUrl,
+    thumbnailUrl,
     objective: text(raw.objective, 200),
     status: raw.status as ReviewedAd['status'],
     schedule,
+    targeting,
   }
 }
 
@@ -111,7 +159,12 @@ export function validateReviewedSnapshot(value: unknown): ReviewedSnapshot {
   const rawMetrics = object(raw.metrics)
   const metrics = {} as ReviewedMetrics
   for (const key of REVIEWED_METRIC_KEYS)
-    metrics[key] = rawMetrics[key] === null ? null : integer(rawMetrics[key])
+    metrics[key] =
+      rawMetrics[key] === null ||
+      (rawMetrics[key] === undefined &&
+        (key === 'linkClickCost' || key === 'landingPageViews'))
+        ? null
+        : integer(rawMetrics[key])
   const reportedDays =
     raw.reportedDays === null ? null : integer(raw.reportedDays)
   if (reportedDays === 0) throw new Error('Invalid reported duration')

@@ -139,6 +139,7 @@ export function summarizeReviewed(rows: ReviewedSnapshot[]): {
     'views',
     'postEngagements',
     'linkClicks',
+    'landingPageViews',
     'likes',
     'video3s',
   ]

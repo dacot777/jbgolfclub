@@ -9,6 +9,8 @@ export const REVIEWED_METRIC_KEYS = [
   'viewers',
   'postEngagements',
   'linkClicks',
+  'linkClickCost',
+  'landingPageViews',
   'likes',
   'video3s',
 ] as const
@@ -20,13 +22,24 @@ export interface ReviewedAd {
   id: string
   title: string
   postUrl: string
+  thumbnailUrl?: string | null
   objective: string
   status: 'active' | 'paused' | 'unknown'
   schedule: {
     start: string
     end: string
-    dailyBudget: number
+    dailyBudget: number | null
+    totalBudget?: number | null
     durationDays: number
+  } | null
+  targeting?: {
+    locations: string[]
+    ageMin: number
+    ageMax: number
+    interests: string[]
+    locationOptimization: boolean | null
+    advantageDetailedTargeting: boolean | null
+    advantageAudience: boolean | null
   } | null
 }
 

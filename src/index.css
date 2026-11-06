@@ -170,6 +170,46 @@ h2 {
   align-items: center;
   padding: 0 12px;
 }
+.brand.academy-brand {
+  gap: 12px;
+  padding: 0 2px;
+}
+.academy-brand .academy-shield {
+  width: 78px;
+  height: 78px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: #fff;
+}
+.brand.academy-brand .academy-brand-name {
+  font-size: 15px;
+  letter-spacing: 1.2px;
+  line-height: 1.3;
+}
+.brand.academy-brand .academy-brand-name > span {
+  color: #d9e8d7;
+  font-size: 10px;
+  letter-spacing: 2.2px;
+  margin-top: 5px;
+}
+.workspace-symbol > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: white;
+  border-radius: 7px;
+}
+.academy-avatar {
+  overflow: hidden;
+  background: white;
+}
+.academy-avatar > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: white;
+}
 .brand-emblem {
   width: 42px;
   height: 42px;
@@ -1881,6 +1921,20 @@ h1 {
     font-size: 8px;
     line-height: 1.2;
     white-space: nowrap;
+  }
+}
+@media (max-width: 700px) {
+  .brand.academy-brand {
+    gap: 0;
+    padding: 0;
+  }
+  .academy-brand .academy-shield {
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+  }
+  .brand.academy-brand .academy-brand-name {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

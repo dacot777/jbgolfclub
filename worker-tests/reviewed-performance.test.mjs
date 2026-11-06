@@ -55,6 +55,16 @@ const snapshot = (overrides = {}) => ({
   notes: '',
   ...overrides,
 })
+const targeting = (overrides = {}) => ({
+  locations: ['검증 도시'],
+  ageMin: 20,
+  ageMax: 40,
+  interests: ['검증 관심사'],
+  locationOptimization: false,
+  advantageDetailedTargeting: true,
+  advantageAudience: null,
+  ...overrides,
+})
 
 async function fixture({ withDatabase = true, migrate = true } = {}) {
   const fetchMock = createFetchMock()
@@ -135,6 +145,9 @@ test('서버에 보관한 확정/미확인 기간과 0/누락을 그대로 읽�
     const reviewedAd = ad({
       accountId: 'private-test-id',
       access_token: 'private-test-secret',
+      thumbnailUrl: '/media/posts/synthetic-ad.png',
+      schedule: { ...ad().schedule, dailyBudget: null, totalBudget: 3000 },
+      targeting: targeting(),
     })
     const unknown = snapshot({ extra: 'private-test-value' })
     const selected = snapshot({
@@ -148,6 +161,8 @@ test('서버에 보관한 확정/미확인 기간과 0/누락을 그대로 읽�
         profileVisits: null,
         websiteVisits: 5,
         websiteVisitCost: 200,
+        linkClickCost: 7,
+        landingPageViews: 2,
       },
     })
     await f.insertAd(reviewedAd)
@@ -156,14 +171,22 @@ test('서버에 보관한 확정/미확인 기간과 0/누락을 그대로 읽�
     const response = await f.request()
     assert.equal(response.status, 200)
     const data = await response.json()
+    assert.equal(data.ads[0].thumbnailUrl, '/media/posts/synthetic-ad.png')
+    assert.equal(data.ads[0].schedule.dailyBudget, null)
+    assert.equal(data.ads[0].schedule.totalBudget, 3000)
+    assert.deepEqual(data.ads[0].targeting, targeting())
     assert.equal(data.updatedAt, selected.reviewedAt)
     assert.equal(data.snapshots[0].period, null)
     assert.equal(data.snapshots[0].scope, 'lifetime')
     assert.equal(data.snapshots[0].reportedDays, 7)
     assert.equal(data.snapshots[0].metrics.linkClicks, 0)
     assert.equal(data.snapshots[0].metrics.video3s, null)
+    assert.equal(data.snapshots[0].metrics.linkClickCost, null)
+    assert.equal(data.snapshots[0].metrics.landingPageViews, null)
     assert.equal(data.snapshots[1].metrics.websiteVisits, 5)
     assert.equal(data.snapshots[1].metrics.profileVisits, null)
+    assert.equal(data.snapshots[1].metrics.linkClickCost, 7)
+    assert.equal(data.snapshots[1].metrics.landingPageViews, 2)
     assert.deepEqual(data.snapshots[1].period, {
       start: '2026-01-01',
       end: '2026-01-07',
@@ -202,6 +225,10 @@ test('조회 API에 쓰기 기능이 없으며 POST/PUT/PATCH/DELETE로 기존 �
     )
     const result = await (await f.request()).json()
     assert.equal(result.ads.length, 1)
+    assert.equal(result.ads[0].thumbnailUrl, null)
+    assert.equal(result.ads[0].targeting, null)
+    assert.equal(result.ads[0].schedule.dailyBudget, 100)
+    assert.equal(result.ads[0].schedule.totalBudget, null)
     assert.equal(result.snapshots.length, 1)
     assert.equal(result.snapshots[0].metrics.spend, 1000)
   } finally {
@@ -226,6 +253,8 @@ test('잘못된 날짜·부분 기간·수치·외부 링크를 실제 실적으
       snapshot({ metrics: { ...snapshot().metrics, spend: '1000' } }),
       snapshot({ reviewedAt: '2026-02-30T00:00:00Z' }),
       snapshot({ reportedDays: 0 }),
+      snapshot({ metrics: { ...snapshot().metrics, linkClickCost: -1 } }),
+      snapshot({ metrics: { ...snapshot().metrics, landingPageViews: '2' } }),
     ]
     for (const value of cases) {
       await f.insertSnapshot(value)
@@ -244,6 +273,35 @@ test('잘못된 날짜·부분 기간·수치·외부 링크를 실제 실적으
       await f.insertAd(ad({ postUrl }))
       assert.equal((await f.request()).status, 503)
     }
+    for (const thumbnailUrl of [
+      'https://evil.example/thumbnail.jpg',
+      '//evil.example/thumbnail.jpg',
+      '/media/posts/../brand.png',
+      '/media/posts/%2e%2e.jpg',
+      '/media/posts/synthetic-ad.svg',
+      '/media/posts/synthetic-ad.png?tracking=secret',
+      'javascript:alert(1)',
+    ]) {
+      await f.insertAd(ad({ thumbnailUrl }))
+      assert.equal((await f.request()).status, 503)
+    }
+    for (const invalidTargeting of [
+      targeting({ ageMin: 41, ageMax: 40 }),
+      targeting({ ageMax: 121 }),
+      targeting({ ageMin: -1 }),
+      targeting({ locations: '검증 도시' }),
+      targeting({ interests: [1] }),
+      targeting({ locationOptimization: 'off' }),
+    ]) {
+      await f.insertAd(ad({ targeting: invalidTargeting }))
+      assert.equal((await f.request()).status, 503)
+    }
+    await f.insertAd(
+      ad({
+        schedule: { ...ad().schedule, dailyBudget: null, totalBudget: -1 },
+      }),
+    )
+    assert.equal((await f.request()).status, 503)
   } finally {
     await f.dispose()
   }

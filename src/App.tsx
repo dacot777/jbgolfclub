@@ -11,7 +11,6 @@ import {
   Copy,
   Download,
   Eye,
-  Flag,
   Camera,
   LayoutDashboard,
   Link2,
@@ -53,6 +52,7 @@ import { useReviewedPerformance } from '@/lib/reviewed-performance'
 import '@/reviewed-dashboard.css'
 
 const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
+const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
 
 const WeeklyChart = lazy(() =>
   import('@/components/performance-charts').then((m) => ({
@@ -231,21 +231,26 @@ export default function App() {
         본문으로 바로가기
       </a>
       <aside className="sidebar">
-        <a href="#overview" className="brand">
-          <span className="brand-emblem">
-            JB
-            <span />
-          </span>
-          <span>
-            GOLF<span>ACADEMY & CLUB</span>
+        <a
+          href="#overview"
+          className="brand academy-brand"
+          aria-label="JB GOLF ACADEMY 대시보드"
+        >
+          <img
+            className="academy-shield"
+            src={shieldLogo}
+            alt="JB GOLF ACADEMY 방패 로고"
+          />
+          <span className="academy-brand-name">
+            JB GOLF<span>ACADEMY</span>
           </span>
         </a>
         <div className="workspace">
           <span className="workspace-symbol">
-            <Flag size={17} aria-hidden="true" />
+            <img src={shieldLogo} alt="" />
           </span>
           <span>
-            JB골프 마케팅<small>Marketing workspace</small>
+            JB아카데미<small>Instagram 광고 관리</small>
           </span>
         </div>
         <p className="nav-label">WORKSPACE</p>
@@ -291,9 +296,11 @@ export default function App() {
             </p>
           </div>
           <button className="profile" onClick={() => setDialog('connect')}>
-            <span className="profile-avatar">JB</span>
+            <span className="profile-avatar academy-avatar">
+              <img src={shieldLogo} alt="" />
+            </span>
             <span>
-              JB골프 담당자<small>마케팅 워크스페이스</small>
+              JB아카데미<small>광고 관리 워크스페이스</small>
             </span>
             <ChevronRight size={16} aria-hidden="true" />
           </button>
@@ -310,7 +317,7 @@ export default function App() {
             <span className="connection-status">
               <i />
               {showReviewed
-                ? '캡처 확인 자료 · 자동 연동 대기'
+                ? '@jbgolfacademy'
                 : sample
                   ? '예시 데이터 모드'
                   : linkedInstagram
@@ -326,7 +333,9 @@ export default function App() {
             >
               <CircleHelp size={19} />
             </button>
-            <span className="top-avatar">JB</span>
+            <span className="top-avatar academy-avatar">
+              <img src={shieldLogo} alt="JB아카데미" />
+            </span>
           </div>
         </header>
         <main id="main">

@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowUpRight,
   CalendarDays,
   Camera,
   ChartColumn,
-  Check,
-  Copy,
   Eye,
-  Link2,
   MousePointer2,
   Target,
   Users,
@@ -25,7 +22,6 @@ import {
   monthPeriods,
   periodKey,
   previousPeriod,
-  reviewedReport,
   rowsForSelection,
   summarizeReviewed,
 } from '@/lib/reviewed-report'
@@ -46,6 +42,8 @@ const detailMetrics: { key: ReviewedMetricKey; label: string; unit: string }[] =
     { key: 'views', label: '조회수', unit: '회' },
     { key: 'viewers', label: '조회한 사람', unit: '명' },
     { key: 'linkClicks', label: '링크 클릭', unit: '회' },
+    { key: 'linkClickCost', label: '링크 클릭당 비용', unit: '원' },
+    { key: 'landingPageViews', label: '랜딩 페이지 조회', unit: '회' },
     { key: 'postEngagements', label: '게시물 참여', unit: '회' },
     { key: 'likes', label: '게시물 공감', unit: '회' },
     { key: 'video3s', label: '동영상 3초 이상 재생', unit: '회' },
@@ -80,6 +78,27 @@ function initialSelection(data: ReviewedPerformanceData) {
     .sort((a, b) => b.period!.end.localeCompare(a.period!.end))
   return confirmed.length ? periodKey(confirmed[0].period!) : 'latest'
 }
+function resultSummary(
+  data: ReviewedPerformanceData,
+  rows: ReviewedSnapshot[],
+) {
+  if (!rows.length) return '선택한 기간의 성과 자료를 기다리고 있습니다.'
+  return rows
+    .map((row) => {
+      const title = data.ads.find((ad) => ad.id === row.adId)?.title ?? '광고'
+      const m = row.metrics
+      const result =
+        m.profileVisits !== null
+          ? `프로필 방문 ${number(m.profileVisits)}회${m.profileVisitCost !== null ? ` · 방문당 ${won(m.profileVisitCost)}` : ''}`
+          : m.linkClicks !== null
+            ? `링크 클릭 ${number(m.linkClicks)}회${m.linkClickCost !== null ? ` · 클릭당 ${won(m.linkClickCost)}` : ''}`
+            : m.websiteVisits !== null
+              ? `웹사이트 방문 ${number(m.websiteVisits)}회`
+              : '결과 집계 대기'
+      return `${title}: ${result}${m.spend !== null ? ` · 광고비 ${won(m.spend)}` : ''}`
+    })
+    .join('\n')
+}
 
 function AdPerformance({
   ad,
@@ -93,30 +112,40 @@ function AdPerformance({
   return (
     <Card className="reviewed-ad" aria-label={ad.title}>
       <div className="reviewed-ad-heading">
-        <span className="reviewed-post-symbol">
-          <Camera aria-hidden="true" />
-        </span>
+        <a
+          className="reviewed-post-thumbnail"
+          href={ad.postUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${ad.title} 사진 열기`}
+        >
+          {ad.thumbnailUrl ? (
+            <img
+              src={`${import.meta.env.BASE_URL}${ad.thumbnailUrl.replace(/^\//, '')}`}
+              alt={`${ad.title} 광고 썸네일`}
+            />
+          ) : (
+            <span>
+              <Camera aria-hidden="true" />
+              광고 이미지
+            </span>
+          )}
+        </a>
         <div>
+          <span className="reviewed-ad-eyebrow">INSTAGRAM AD</span>
           <h3>{ad.title}</h3>
           <p>{ad.objective}</p>
+          <a
+            className="reviewed-post-link"
+            href={ad.postUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Instagram 게시물 보기
+            <ArrowUpRight size={15} aria-hidden="true" />
+          </a>
         </div>
-        <span className="reviewed-status">
-          {ad.status === 'active'
-            ? '캡처 당시 활성'
-            : ad.status === 'paused'
-              ? '캡처 당시 일시 중지'
-              : '상태 미확인'}
-        </span>
       </div>
-      <a
-        className="reviewed-post-link"
-        href={ad.postUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Instagram 게시물 보기
-        <ArrowUpRight size={15} aria-hidden="true" />
-      </a>
       <div className="reviewed-ad-period">
         <CalendarDays size={14} aria-hidden="true" />
         {row?.period
@@ -124,9 +153,6 @@ function AdPerformance({
           : row
             ? '전체 기간 누적 · 집계 날짜 확인 중'
             : `${selectionLabel} · 성과 자료 대기`}
-        {row?.reportedDays !== null && row?.reportedDays !== undefined && (
-          <span>화면 표시: {row.reportedDays}일 집행</span>
-        )}
       </div>
       {row ? (
         <>
@@ -140,15 +166,6 @@ function AdPerformance({
                 </div>
               ))}
           </dl>
-          {!row.period && (
-            <p className="reviewed-date-note">
-              집계 날짜가 확인되지 않아 이 누적 수치를 특정 주의 실적으로 넣지
-              않았습니다.
-            </p>
-          )}
-          <p className="reviewed-source">
-            {row.sourceLabel} · 자료 확인 {reviewedTime(row.reviewedAt)}
-          </p>
         </>
       ) : (
         <div className="reviewed-ad-empty">
@@ -167,14 +184,63 @@ function AdPerformance({
                 {dateLabel(ad.schedule.start)} — {dateLabel(ad.schedule.end)}
               </dd>
             </div>
-            <div>
-              <dt>일일 예산</dt>
-              <dd>{won(ad.schedule.dailyBudget)}</dd>
-            </div>
+            {ad.schedule.dailyBudget !== null && (
+              <div>
+                <dt>일일 예산</dt>
+                <dd>{won(ad.schedule.dailyBudget)}</dd>
+              </div>
+            )}
+            {ad.schedule.totalBudget != null && (
+              <div>
+                <dt>총 예산</dt>
+                <dd>{won(ad.schedule.totalBudget)}</dd>
+              </div>
+            )}
             <div>
               <dt>설정 기간</dt>
               <dd>{ad.schedule.durationDays}일</dd>
             </div>
+          </dl>
+        </details>
+      )}
+      {ad.targeting && (
+        <details className="reviewed-schedule">
+          <summary>광고 타겟</summary>
+          <dl>
+            <div>
+              <dt>지역</dt>
+              <dd>{ad.targeting.locations.join(' · ')}</dd>
+            </div>
+            <div>
+              <dt>연령</dt>
+              <dd>
+                {ad.targeting.ageMin}~{ad.targeting.ageMax}세
+              </dd>
+            </div>
+            <div>
+              <dt>관심사</dt>
+              <dd>{ad.targeting.interests.join(' · ') || '미기록'}</dd>
+            </div>
+            {ad.targeting.locationOptimization !== null && (
+              <div>
+                <dt>위치 최적화</dt>
+                <dd>{ad.targeting.locationOptimization ? '설정' : '해제'}</dd>
+              </div>
+            )}
+            {ad.targeting.advantageDetailedTargeting !== null && (
+              <div>
+                <dt>어드밴티지 상세 타게팅</dt>
+                <dd>
+                  {ad.targeting.advantageDetailedTargeting ? '설정' : '해제'}
+                </dd>
+              </div>
+            )}
+            {ad.targeting.advantageAudience !== null && (
+              <div>
+                <dt>어드밴티지 타겟</dt>
+                <dd>{ad.targeting.advantageAudience ? '설정' : '해제'}</dd>
+              </div>
+            )}
           </dl>
         </details>
       )}
@@ -194,16 +260,6 @@ export default function ReviewedDashboard({
       ? koreanMonth(data.updatedAt ?? new Date().toISOString())
       : initial.split('|')[1].slice(0, 7)
   })
-  const [copied, setCopied] = useState(false)
-  const [message, setMessage] = useState('')
-  useEffect(() => {
-    setCopied(false)
-  }, [selection])
-  useEffect(() => {
-    if (!message) return
-    const timer = setTimeout(() => setMessage(''), 5000)
-    return () => clearTimeout(timer)
-  }, [message])
   const weeks = monthPeriods(month)
   const knownRanges = new Map(
     data.snapshots
@@ -229,7 +285,7 @@ export default function ReviewedDashboard({
   const selectedOption = options.find((w) => w.key === selection)
   const selectionLabel =
     selection === 'latest'
-      ? '최근 전달 자료 · 캡처 기준'
+      ? '전체 누적 성과'
       : selectedOption
         ? `${dateLabel(selectedOption.start)} — ${dateLabel(selectedOption.end)}`
         : selection.replace('|', ' — ')
@@ -250,34 +306,8 @@ export default function ReviewedDashboard({
         .map((r) => r.adId)
         .sort()
         .join('|')
-  const report = reviewedReport(
-    data.ads,
-    rows,
-    selectionLabel,
-    data.expectedAdCount,
-  )
-  const reportPreview = report
-    .split('\n')
-    .filter(
-      (line) =>
-        !line.startsWith('[') &&
-        !line.startsWith('조회 기준:') &&
-        !line.startsWith('확인된 광고 ') &&
-        !line.startsWith('사용자가 전달한 '),
-    )
-    .join('\n')
+  const reportPreview = resultSummary(data, rows)
   const hasIncomplete = rows.length < data.expectedAdCount
-  async function copyReport() {
-    try {
-      await navigator.clipboard.writeText(report)
-      setCopied(true)
-      setMessage('선택한 자료의 성과 보고를 복사했습니다.')
-    } catch {
-      setMessage(
-        '복사 권한을 확인하거나 보고 문장을 직접 선택해 복사해 주세요.',
-      )
-    }
-  }
 
   return (
     <div className="reviewed-dashboard">
@@ -288,13 +318,9 @@ export default function ReviewedDashboard({
             인스타그램 광고 성과<span>.</span>
           </h1>
           <p className="page-description">
-            @jbgolfacademy · 전달해 주신 광고 캡처를 확인해 반영한 성과입니다.
+            JB GOLF ACADEMY · 광고별 성과와 주간 변화를 한눈에 확인하세요.
           </p>
         </div>
-        <span className="reviewed-source-badge">
-          <Camera size={15} aria-hidden="true" />
-          캡처 확인 자료
-        </span>
       </section>
       <section className="reviewed-period-control" aria-label="성과 조회 기간">
         <div>
@@ -326,7 +352,7 @@ export default function ReviewedDashboard({
             value={selection}
             onChange={(e) => setSelection(e.target.value)}
           >
-            <option value="latest">최근 전달 자료 · 캡처 기준</option>
+            <option value="latest">전체 누적 성과</option>
             {options.map((option) => (
               <option key={option.key} value={option.key}>
                 {option.label} · {option.start.slice(5).replace('-', '/')}~
@@ -336,23 +362,6 @@ export default function ReviewedDashboard({
           </select>
         </label>
       </section>
-      <div className="reviewed-notice" role="status">
-        <span>
-          <strong>
-            {selection === 'latest'
-              ? '전달받은 캡처의 수치를 보고 있습니다'
-              : '선택한 기간에 확인된 자료만 표시합니다'}
-          </strong>
-          <span>
-            {selection === 'latest'
-              ? '전체 기간 누적 자료는 주간 합계와 구분합니다. 캡처를 보내주시면 확인 후 이 대시보드에 반영합니다.'
-              : '캡처의 집계 시작일·종료일이 정확히 같은 기록만 사용합니다. 자료가 없으면 0으로 표시하지 않습니다.'}
-          </span>
-        </span>
-        <b>
-          {rows.length}/{data.expectedAdCount}개 광고 확인
-        </b>
-      </div>
 
       <section
         id="weekly"
@@ -361,47 +370,23 @@ export default function ReviewedDashboard({
       >
         <div className="report-body">
           <div className="report-kicker">
-            <ChartColumn size={14} aria-hidden="true" /> PERFORMANCE BRIEF{' '}
-            <span>{selection === 'latest' ? '캡처 기준' : '선택 기간'}</span>
+            <ChartColumn size={14} aria-hidden="true" /> PERFORMANCE SUMMARY
           </div>
-          <h2 id="reviewed-report-title">
-            {selection === 'latest'
-              ? '전달 자료 성과 보고'
-              : '선택 기간 성과 보고'}
-          </h2>
+          <h2 id="reviewed-report-title">한 줄 결과</h2>
           <p className="reviewed-report-text">{reportPreview}</p>
           <div className="report-footer">
             <span className="report-state">
               <i />
-              마지막 자료 확인: {reviewedTime(data.updatedAt)}
+              최근 업데이트: {reviewedTime(data.updatedAt)}
             </span>
-            <span>자동 수집 미연결 · 캡처 확인 후 반영</span>
           </div>
-        </div>
-        <div className="reviewed-report-actions">
-          <Button
-            className="copy-button"
-            disabled={!rows.length}
-            onClick={() => void copyReport()}
-          >
-            {copied ? (
-              <Check aria-hidden="true" />
-            ) : (
-              <Copy aria-hidden="true" />
-            )}
-            {copied ? '복사 완료' : '보고 문장 복사'}
-          </Button>
         </div>
       </section>
 
       <div className="section-heading">
         <div>
           <p className="eyebrow">PERFORMANCE</p>
-          <h2>
-            {selection === 'latest'
-              ? '전달 자료 핵심 성과'
-              : '선택 기간 핵심 성과'}
-          </h2>
+          <h2>핵심 성과</h2>
         </div>
         <span className="reviewed-coverage">
           {hasIncomplete
@@ -574,34 +559,10 @@ export default function ReviewedDashboard({
           </p>
         </Card>
       </section>
-      <div className="reviewed-method">
-        <Link2 size={17} aria-hidden="true" />
-        <p>
-          조회수와 노출, 조회한 사람과 도달은 서로 바꾸어 쓰지 않습니다. 광고별
-          고유 인원은 합산하지 않습니다. 일별 자료가 없는 기간의 일별 그래프나
-          전주 증감률을 만들지 않습니다.
-        </p>
-      </div>
       <footer className="page-footer">
-        <span>
-          JB GOLF <i>·</i> ACADEMY & CLUB
-        </span>
-        <span>
-          캡처 확인 자료 · 이전 주 기록은 보관 · 자동 연동은 추후 연결
-        </span>
+        <span>JB GOLF ACADEMY</span>
+        <span>광고 성과 대시보드</span>
       </footer>
-      <div
-        role="status"
-        aria-live="polite"
-        className={message ? 'toast' : 'sr-only'}
-      >
-        {message}
-        {message && (
-          <button onClick={() => setMessage('')} aria-label="알림 닫기">
-            닫기
-          </button>
-        )}
-      </div>
     </div>
   )
 }

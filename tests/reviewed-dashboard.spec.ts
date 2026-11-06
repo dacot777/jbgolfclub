@@ -15,6 +15,7 @@ const ad: ReviewedAd = {
   id: 'synthetic-post-a',
   title: '검증용 입상 사진 광고',
   postUrl: 'https://www.instagram.com/p/TestPostABCDEFG/',
+  thumbnailUrl: '/media/posts/synthetic-ad.png',
   objective: '프로필 방문 수 늘리기',
   status: 'active',
   schedule: {
@@ -79,6 +80,15 @@ async function mockConnection(page: Page) {
 }
 async function mockData(page: Page, value = data()) {
   await mockConnection(page)
+  await page.route('**/media/posts/synthetic-ad.png', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  )
   await page.route('**/api/performance', (route) =>
     route.fulfill({ json: value }),
   )
@@ -96,12 +106,24 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
   ).toBeVisible()
   await expect(page.locator('.reviewed-dashboard')).toBeVisible()
   await expect(page.locator('.metric-card').first()).toContainText('1,200')
-  await expect(page.locator('.reviewed-report-text')).toContainText(
-    '전체 기간 누적',
-  )
-  await expect(page.locator('.reviewed-report-text')).toContainText(
+  await expect(
+    page.getByRole('heading', { name: '한 줄 결과', exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.reviewed-ad-period')).toContainText(
     '집계 날짜 확인 중',
   )
+  const thumbnail = page.locator('.reviewed-ad-heading img')
+  await expect(thumbnail).toHaveAttribute('src', ad.thumbnailUrl!)
+  await expect(thumbnail).toBeVisible()
+  expect((await thumbnail.boundingBox())!.width).toBeGreaterThanOrEqual(96)
+  await expect(page.getByText('캡처 당시 활성', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('캡처 확인 자료', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByText('전달받은 캡처의 수치를 보고 있습니다', { exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '보고 문장 복사' }),
+  ).toHaveCount(0)
   const values = page.locator('.reviewed-ad-values')
   await expect(
     values.getByText('Instagram 프로필 방문', { exact: true }),
@@ -120,9 +142,6 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
   await expect(link).toHaveAttribute('href', ad.postUrl)
   await expect(link).toHaveAttribute('target', '_blank')
   await expect(link).toHaveAttribute('rel', /noopener/)
-  await expect(page.locator('.reviewed-notice')).toContainText(
-    '1/2개 광고 확인',
-  )
   await expect(page.locator('.reviewed-awaiting')).toContainText(
     '두 번째 광고 자료 대기',
   )
@@ -152,14 +171,14 @@ test('전체 기간 누적 자료를 날짜가 겹치는 첫 주 실적으로 �
   await expect(page.locator('.metric-card').first()).toContainText('—')
   await expect(page.locator('.metric-card').first()).not.toContainText('1,200')
   await expect(page.locator('.reviewed-report-text')).toContainText(
-    '이 기간에 확인된 성과 자료가 아직 없습니다',
+    '선택한 기간의 성과 자료를 기다리고 있습니다.',
   )
   await expect(page.locator('.reviewed-ad-empty')).toContainText(
     '선택한 기간의 성과 자료가 없습니다',
   )
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
-  ).toBeDisabled()
+  ).toHaveCount(0)
   await page.getByLabel('조회 월').fill('2026-10')
   await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
     '2026-10-01|2026-10-07',
@@ -172,6 +191,78 @@ test('전체 기간 누적 자료를 날짜가 겹치는 첫 주 실적으로 �
     .getByRole('combobox', { name: /^조회 기간/ })
     .selectOption('latest')
   await expect(page.locator('.metric-card').first()).toContainText('1,200')
+})
+
+test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회·총예산을 구분한다', async ({
+  page,
+}) => {
+  const secondAd: ReviewedAd = {
+    ...ad,
+    id: 'synthetic-post-b',
+    title: '검증용 시설 광고',
+    objective: '링크 클릭 수 늘리기',
+    postUrl: 'https://www.instagram.com/p/TestPostHIJKLMN/',
+    schedule: {
+      start: '2026-11-01',
+      end: '2026-12-01',
+      dailyBudget: null,
+      totalBudget: 3000,
+      durationDays: 30,
+    },
+    targeting: {
+      locations: ['검증 도시'],
+      ageMin: 21,
+      ageMax: 44,
+      interests: ['검증 관심사'],
+      locationOptimization: false,
+      advantageDetailedTargeting: true,
+      advantageAudience: false,
+    },
+  }
+  const value = data([
+    snapshot(),
+    snapshot({
+      id: 'synthetic-second-lifetime',
+      adId: secondAd.id,
+      reportedDays: 8,
+      metrics: metrics({
+        spend: 1800,
+        profileVisits: null,
+        profileVisitCost: null,
+        websiteVisits: null,
+        websiteVisitCost: null,
+        linkClicks: 30,
+        linkClickCost: 60,
+        landingPageViews: 20,
+      }),
+    }),
+  ])
+  value.ads.push(secondAd)
+  await mockData(page, value)
+  await page.goto('/')
+  const second = page
+    .locator('.reviewed-ad')
+    .filter({
+      has: page.getByRole('heading', { name: secondAd.title, exact: true }),
+    })
+  await expect(second).toBeVisible()
+  await expect(
+    second.getByText('링크 클릭', { exact: true }).locator('..'),
+  ).toContainText('30회')
+  await expect(
+    second.getByText('링크 클릭당 비용', { exact: true }).locator('..'),
+  ).toContainText('60원')
+  await expect(
+    second.getByText('랜딩 페이지 조회', { exact: true }).locator('..'),
+  ).toContainText('20회')
+  await expect(second.getByText('웹사이트 방문', { exact: true })).toHaveCount(
+    0,
+  )
+  await expect(page.locator('.metric-card').first()).not.toContainText('3,000')
+  await second.getByText('광고 설정', { exact: false }).click()
+  await expect(second).toContainText('총 예산')
+  await expect(second).toContainText('3,000원')
+  await expect(second.getByText('일일 예산', { exact: true })).toHaveCount(0)
 })
 
 test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본은 최신 한 건만 사용한다', async ({
@@ -212,8 +303,8 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
     .selectOption(firstWeek)
   await expect(page.locator('.metric-card').first()).toContainText('1,100')
   await expect(page.locator('.metric-card').first()).not.toContainText('1,500')
-  await expect(page.locator('.reviewed-report-text')).toContainText(
-    '2026-11-01 — 2026-11-07',
+  await expect(page.locator('.reviewed-ad-period')).toContainText(
+    '2026.11.01 — 2026.11.07',
   )
   await page
     .getByRole('combobox', { name: /^조회 기간/ })
