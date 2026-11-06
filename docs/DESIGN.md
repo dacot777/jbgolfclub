@@ -35,7 +35,7 @@ Typography uses locally served DM Sans Variable and Noto Sans KR Variable with t
 
 ## Interaction and accessibility
 
-The manual Insight Archive is a separate `#records` page using the same forest-green palette and Radix forms. It accepts browser-local screenshot attachments with reviewed numeric entry. Empty states explain browser storage and backup. Unknown periods receive an amber badge and never become weekly/monthly totals. Rounded views remain literal display text. See [manual insight rules](MANUAL_INSIGHTS.md).
+The manual Insight Archive menu, page and entry banner were removed at the user's request on 2026-11-06. The old `#records` URL opens the overview. Previously stored browser records are not automatically erased.
 
 Lucide SVG icons, semantic buttons/links, visible focus, Radix dialog keyboard handling, labels for inputs and filters, accessible table alternatives for both charts, distinct solid/dashed weekly series. Disable nonessential motion with prefers-reduced-motion. Mobile navigation and controls retain accessible names.
 
@@ -49,4 +49,4 @@ Only the main metric numbers use the adapted Magic UI effect. Chart entrance ani
 - shadcn/ui: actual Button, Card, Badge, Dialog and Tabs source adapted to this project.
 - shadcn-admin: responsive dashboard organization as a reference; its app/router/auth were not imported.
 
-The automatic overview remains an unconnected/demo interface. The separate manual archive stores actual owner-entered records locally. Styling must not imply that authentication or server collection already works.
+The automatic overview remains an unconnected/demo interface. Styling must not imply that authentication or server collection already works.
