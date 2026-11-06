@@ -1,5 +1,6 @@
 import type { Env, ConnectionRow, SessionRow } from './types'
 import { ConnectionError } from './types'
+import { reviewedPerformance } from './reviewed-performance'
 import {
   authorizationUrl,
   configuration,
@@ -253,6 +254,8 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
+  if (path === '/api/performance' && request.method === 'GET')
+    return reviewedPerformance(env.DB)
   if (path === '/api/connection' && request.method === 'GET')
     return status(request, env)
   if (path === '/api/auth/instagram/start' && request.method === 'POST')

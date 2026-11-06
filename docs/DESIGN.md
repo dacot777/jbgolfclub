@@ -26,6 +26,7 @@ Typography uses locally served DM Sans Variable and Noto Sans KR Variable with t
 
 ## States and data
 
+- The published performance dashboard now reads reviewed screenshot data from D1: no upload page or local archive. Real values, source labels, per-ad post links, and persistent month/7-day history are shown in the existing dashboard. Unknown capture periods remain a separate cumulative view; never turn the ad schedule into a reporting period or invent daily charts. The demo keeps its separate original Monday-based fixture; real reviewed history uses the user's calendar-month slots. Details: [reviewed reporting](REVIEWED_PERFORMANCE.md).
 - Default: “Instagram 계정 미연결”, target account @jbgolfacademy, em dashes and helpful empty states. Missing data is never presented as zero.
 - Demo: explicitly marked “예시 데이터 · 실제 광고 실적 아님”; copied reports and exported CSV carry the same notice.
 - Zero denominator: show absolute change without a percentage; no results means no cost per result.
@@ -49,4 +50,4 @@ Only the main metric numbers use the adapted Magic UI effect. Chart entrance ani
 - shadcn/ui: actual Button, Card, Badge, Dialog and Tabs source adapted to this project.
 - shadcn-admin: responsive dashboard organization as a reference; its app/router/auth were not imported.
 
-The automatic overview remains an unconnected/demo interface. Styling must not imply that authentication or server collection already works.
+Reviewed screenshot data can be real while Meta login/automatic collection remain unconfigured. Status labels must distinguish these states. The fallback/demo overview must never imply live authentication or collection.

@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "build:pages": "tsc --noEmit && vite build --base=/jbgolfclub/",
     "build:worker": "tsc --noEmit && tsc -p tsconfig.worker.json && vite build --mode worker",
-    "test:worker": "node --test worker-tests/connection.test.mjs",
+    "test:worker": "node --test worker-tests/*.test.mjs",
     "deploy:worker": "npm run build:worker && wrangler deploy --config wrangler.production.jsonc",
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",
