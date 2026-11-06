@@ -26,6 +26,7 @@ Typography uses locally served DM Sans Variable and Noto Sans KR Variable with t
 
 ## States and data
 
+- Submission view: reviewed KPI cards/headline/caution are temporarily off. Period options and history rows come only from actual stored, nonempty, date-confirmed snapshots; no generated month/week placeholders. Unknown-date cumulative records remain available as one cumulative option. The summary and per-ad photos/figures lead the page.
 - The published performance dashboard now reads reviewed screenshot data from D1: no upload page or local archive. Real values, source labels, per-ad post links, and persistent month/7-day history are shown in the existing dashboard. Unknown capture periods remain a separate cumulative view; never turn the ad schedule into a reporting period or invent daily charts. The demo keeps its separate original Monday-based fixture; real reviewed history uses the user's calendar-month slots. Details: [reviewed reporting](REVIEWED_PERFORMANCE.md).
 - Default: “Instagram 계정 미연결”, target account @jbgolfacademy, em dashes and helpful empty states. Missing data is never presented as zero.
 - Demo: explicitly marked “예시 데이터 · 실제 광고 실적 아님”; copied reports and exported CSV carry the same notice.

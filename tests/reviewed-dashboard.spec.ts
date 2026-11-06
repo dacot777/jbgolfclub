@@ -93,6 +93,14 @@ async function mockData(page: Page, value = data()) {
     route.fulfill({ json: value }),
   )
 }
+function adValues(page: Page, title = ad.title) {
+  return page
+    .locator('.reviewed-ad')
+    .filter({
+      has: page.getByRole('heading', { name: title, exact: true }),
+    })
+    .locator('.reviewed-ad-values')
+}
 
 test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성과 대시보드에 표시한다', async ({
   page,
@@ -105,7 +113,12 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
   await expect(page.locator('.reviewed-dashboard')).toBeVisible()
-  await expect(page.locator('.metric-card').first()).toContainText('1,200')
+  await expect(adValues(page)).toContainText('1,200원')
+  await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
+  await expect(
+    page.getByRole('heading', { name: '핵심 성과', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.locator('.reviewed-caution')).toHaveCount(0)
   await expect(
     page.getByRole('heading', { name: '한 줄 결과', exact: true }),
   ).toBeVisible()
@@ -157,7 +170,7 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
   expect(errors).toEqual([])
 })
 
-test('전체 기간 누적 자료를 날짜가 겹치는 첫 주 실적으로 옮겨 넣지 않는다', async ({
+test('누적 자료만 있을 때 저장되지 않은 주차와 월을 만들지 않는다', async ({
   page,
 }) => {
   await mockData(page)
@@ -165,32 +178,24 @@ test('전체 기간 누적 자료를 날짜가 겹치는 첫 주 실적으로 �
   await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
     'latest',
   )
-  await page
+  const options = page
     .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption(firstWeek)
-  await expect(page.locator('.metric-card').first()).toContainText('—')
-  await expect(page.locator('.metric-card').first()).not.toContainText('1,200')
-  await expect(page.locator('.reviewed-report-text')).toContainText(
-    '선택한 기간의 성과 자료를 기다리고 있습니다.',
-  )
-  await expect(page.locator('.reviewed-ad-empty')).toContainText(
-    '선택한 기간의 성과 자료가 없습니다',
+    .locator('option')
+  await expect(options).toHaveCount(1)
+  await expect(options.first()).toHaveAttribute('value', 'latest')
+  await expect(page.locator('input[type=month]')).toHaveCount(0)
+  await expect(page.locator(`option[value="${firstWeek}"]`)).toHaveCount(0)
+  await expect(page.locator('.reviewed-history')).toHaveCount(0)
+  await expect(page.locator('.reviewed-ad-period')).toContainText(
+    '집계 날짜 확인 중',
   )
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toHaveCount(0)
-  await page.getByLabel('조회 월').fill('2026-10')
-  await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
-    '2026-10-01|2026-10-07',
-  )
-  await page.getByLabel('조회 월').fill('2026-11')
-  await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
-    firstWeek,
-  )
   await page
     .getByRole('combobox', { name: /^조회 기간/ })
     .selectOption('latest')
-  await expect(page.locator('.metric-card').first()).toContainText('1,200')
+  await expect(adValues(page)).toContainText('1,200원')
 })
 
 test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회·총예산을 구분한다', async ({
@@ -240,11 +245,9 @@ test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회�
   value.ads.push(secondAd)
   await mockData(page, value)
   await page.goto('/')
-  const second = page
-    .locator('.reviewed-ad')
-    .filter({
-      has: page.getByRole('heading', { name: secondAd.title, exact: true }),
-    })
+  const second = page.locator('.reviewed-ad').filter({
+    has: page.getByRole('heading', { name: secondAd.title, exact: true }),
+  })
   await expect(second).toBeVisible()
   await expect(
     second.getByText('링크 클릭', { exact: true }).locator('..'),
@@ -258,7 +261,12 @@ test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회�
   await expect(second.getByText('웹사이트 방문', { exact: true })).toHaveCount(
     0,
   )
-  await expect(page.locator('.metric-card').first()).not.toContainText('3,000')
+  await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
+  await expect(adValues(page)).toContainText('1,200원')
+  await expect(adValues(page, secondAd.title)).toContainText('1,800원')
+  expect(
+    (await page.locator('.reviewed-ad-values').allTextContents()).join('\n'),
+  ).not.toContain('3,000원')
   await second.getByText('광고 설정', { exact: false }).click()
   await expect(second).toContainText('총 예산')
   await expect(second).toContainText('3,000원')
@@ -297,19 +305,25 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
   await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
     secondWeek,
   )
-  await expect(page.locator('.metric-card').first()).toContainText('2,200')
+  await expect(adValues(page)).toContainText('2,200원')
+  await expect(
+    page.getByRole('combobox', { name: /^조회 기간/ }).locator('option'),
+  ).toHaveCount(3)
+  await expect(
+    page.locator('option[value="2026-11-15|2026-11-21"]'),
+  ).toHaveCount(0)
   await page
     .getByRole('combobox', { name: /^조회 기간/ })
     .selectOption(firstWeek)
-  await expect(page.locator('.metric-card').first()).toContainText('1,100')
-  await expect(page.locator('.metric-card').first()).not.toContainText('1,500')
+  await expect(adValues(page)).toContainText('1,100원')
+  await expect(adValues(page)).not.toContainText('1,500원')
   await expect(page.locator('.reviewed-ad-period')).toContainText(
     '2026.11.01 — 2026.11.07',
   )
   await page
     .getByRole('combobox', { name: /^조회 기간/ })
     .selectOption(secondWeek)
-  await expect(page.locator('.metric-card').first()).toContainText('2,200')
+  await expect(adValues(page)).toContainText('2,200원')
   await page.reload()
   await expect(page.getByRole('combobox', { name: /^조회 기간/ })).toHaveValue(
     secondWeek,
@@ -317,7 +331,8 @@ test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본�
   await page
     .getByRole('combobox', { name: /^조회 기간/ })
     .selectOption(firstWeek)
-  await expect(page.locator('.metric-card').first()).toContainText('1,100')
+  await expect(adValues(page)).toContainText('1,100원')
+  await expect(page.locator('.reviewed-history-table tbody tr')).toHaveCount(2)
   const row = page
     .locator('.reviewed-history-table tbody tr')
     .filter({ hasText: '2026.11.01 — 2026.11.07' })
@@ -353,7 +368,8 @@ test('자료 조회 실패는 연결 성공이나 실제 0원으로 표시하지
   failing = false
   await page.getByRole('button', { name: '자료 다시 불러오기' }).click()
   await expect(page.locator('.reviewed-dashboard')).toBeVisible()
-  await expect(page.locator('.metric-card').first()).toContainText('1,200')
+  await expect(adValues(page)).toContainText('1,200원')
+  await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
@@ -371,14 +387,16 @@ for (const width of [375, 768, 1440]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true)
-    await page
-      .getByRole('combobox', { name: /^조회 기간/ })
-      .selectOption(firstWeek)
-    await expect(page.locator('.metric-card').first()).toContainText('—')
+    await expect(
+      page.getByRole('combobox', { name: /^조회 기간/ }).locator('option'),
+    ).toHaveCount(1)
+    await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(
+      0,
+    )
     await page
       .getByRole('combobox', { name: /^조회 기간/ })
       .selectOption('latest')
-    await expect(page.locator('.metric-card').first()).toContainText('1,200')
+    await expect(adValues(page)).toContainText('1,200원')
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,

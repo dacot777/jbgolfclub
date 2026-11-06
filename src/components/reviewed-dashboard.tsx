@@ -19,7 +19,6 @@ import type {
   ReviewedSnapshot,
 } from '@/lib/reviewed-performance-types'
 import {
-  monthPeriods,
   periodKey,
   previousPeriod,
   rowsForSelection,
@@ -32,6 +31,8 @@ const metrics = [
   { key: 'views', label: '조회수', unit: '회', icon: Eye },
   { key: 'linkClicks', label: '링크 클릭', unit: '회', icon: MousePointer2 },
 ] as const
+// Temporarily hidden for the submitted report. Re-enable only when requested.
+const SHOW_KPIS = false
 const detailMetrics: { key: ReviewedMetricKey; label: string; unit: string }[] =
   [
     { key: 'spend', label: '지출', unit: '원' },
@@ -64,17 +65,14 @@ function reviewedTime(value: string | null) {
       }).format(new Date(value))
     : '아직 없음'
 }
-function koreanMonth(value: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date(value))
-  return `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}`
-}
 function initialSelection(data: ReviewedPerformanceData) {
   const confirmed = data.snapshots
-    .filter((s) => s.scope === 'selected_period' && s.period)
+    .filter(
+      (s) =>
+        s.scope === 'selected_period' &&
+        s.period &&
+        Object.values(s.metrics).some((value) => value !== null),
+    )
     .sort((a, b) => b.period!.end.localeCompare(a.period!.end))
   return confirmed.length ? periodKey(confirmed[0].period!) : 'latest'
 }
@@ -254,34 +252,28 @@ export default function ReviewedDashboard({
   data: ReviewedPerformanceData
 }) {
   const [selection, setSelection] = useState(() => initialSelection(data))
-  const [month, setMonth] = useState(() => {
-    const initial = initialSelection(data)
-    return initial === 'latest'
-      ? koreanMonth(data.updatedAt ?? new Date().toISOString())
-      : initial.split('|')[1].slice(0, 7)
-  })
-  const weeks = monthPeriods(month)
   const knownRanges = new Map(
     data.snapshots
       .filter(
         (s) =>
           s.period &&
           s.scope === 'selected_period' &&
-          (s.period.start.startsWith(month) || s.period.end.startsWith(month)),
+          Object.values(s.metrics).some((value) => value !== null),
       )
       .map((s) => [periodKey(s.period!), s.period!]),
   )
-  const additional = [...knownRanges.entries()]
-    .filter(([key]) => !weeks.some((w) => w.key === key))
+  const options = [...knownRanges.entries()]
     .map(([key, p]) => ({
       key,
-      label: `확인된 별도 기간 ${dateLabel(p.start)} — ${dateLabel(p.end)}`,
+      label: `${dateLabel(p.start)} — ${dateLabel(p.end)}`,
       start: p.start,
       end: p.end,
       days:
         Math.round((Date.parse(p.end) - Date.parse(p.start)) / 86400000) + 1,
     }))
-  const options = [...weeks, ...additional]
+    .sort(
+      (a, b) => b.end.localeCompare(a.end) || b.start.localeCompare(a.start),
+    )
   const selectedOption = options.find((w) => w.key === selection)
   const selectionLabel =
     selection === 'latest'
@@ -327,25 +319,9 @@ export default function ReviewedDashboard({
           <CalendarDays aria-hidden="true" />
           <span>
             지난 성과도, 원하는 기간으로.
-            <small>7일 단위 기록을 선택해 다시 확인하세요.</small>
+            <small>저장된 성과를 기간별로 확인하세요.</small>
           </span>
         </div>
-        <label>
-          조회 월
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => {
-              if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) {
-                const choices = monthPeriods(e.target.value)
-                if (choices.length) {
-                  setMonth(e.target.value)
-                  setSelection(choices[0].key)
-                }
-              }
-            }}
-          />
-        </label>
         <label>
           조회 기간
           <select
@@ -355,8 +331,7 @@ export default function ReviewedDashboard({
             <option value="latest">전체 누적 성과</option>
             {options.map((option) => (
               <option key={option.key} value={option.key}>
-                {option.label} · {option.start.slice(5).replace('-', '/')}~
-                {option.end.slice(5).replace('-', '/')}
+                {option.label}
               </option>
             ))}
           </select>
@@ -383,66 +358,70 @@ export default function ReviewedDashboard({
         </div>
       </section>
 
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">PERFORMANCE</p>
-          <h2>핵심 성과</h2>
-        </div>
-        <span className="reviewed-coverage">
-          {hasIncomplete
-            ? `${rows.length}개 광고 자료 · 전체 2개 중 일부`
-            : '2개 광고 자료'}
-        </span>
-      </div>
-      <section className="metric-grid" aria-label="확인된 핵심 지표">
-        {metrics.map((m, i) => (
-          <Card
-            className={`metric-card ${i === 0 ? 'metric-primary' : ''}`}
-            key={m.key}
-          >
-            <div className="metric-label">
-              <span>{m.label}</span>
-              <m.icon size={18} aria-hidden="true" />
+      {SHOW_KPIS && (
+        <>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">PERFORMANCE</p>
+              <h2>핵심 성과</h2>
             </div>
-            <div className="metric-value">
-              {summary.metrics[m.key] !== null ? (
-                <span>{number(summary.metrics[m.key]!)}</span>
-              ) : (
-                <span
-                  className={
-                    rows.length > 1 && !summary.canAggregate
-                      ? 'reviewed-no-sum'
-                      : ''
-                  }
-                >
-                  {rows.length > 1 && !summary.canAggregate
-                    ? '광고별 확인'
-                    : '—'}
-                </span>
-              )}
-              <small>{m.unit}</small>
-            </div>
-            <p className="reviewed-metric-sub">
-              {comparable &&
-              summary.metrics[m.key] !== null &&
-              previous.metrics[m.key] !== null
-                ? changeLabel(
-                    summary.metrics[m.key]!,
-                    previous.metrics[m.key]!,
-                    m.unit,
-                  )
-                : rows.length
-                  ? '같은 기준의 이전 기간 비교 자료 없음'
-                  : '선택 기간의 자료 없음'}
+            <span className="reviewed-coverage">
+              {hasIncomplete
+                ? `${rows.length}개 광고 자료 · 전체 2개 중 일부`
+                : '2개 광고 자료'}
+            </span>
+          </div>
+          <section className="metric-grid" aria-label="확인된 핵심 지표">
+            {metrics.map((m, i) => (
+              <Card
+                className={`metric-card ${i === 0 ? 'metric-primary' : ''}`}
+                key={m.key}
+              >
+                <div className="metric-label">
+                  <span>{m.label}</span>
+                  <m.icon size={18} aria-hidden="true" />
+                </div>
+                <div className="metric-value">
+                  {summary.metrics[m.key] !== null ? (
+                    <span>{number(summary.metrics[m.key]!)}</span>
+                  ) : (
+                    <span
+                      className={
+                        rows.length > 1 && !summary.canAggregate
+                          ? 'reviewed-no-sum'
+                          : ''
+                      }
+                    >
+                      {rows.length > 1 && !summary.canAggregate
+                        ? '광고별 확인'
+                        : '—'}
+                    </span>
+                  )}
+                  <small>{m.unit}</small>
+                </div>
+                <p className="reviewed-metric-sub">
+                  {comparable &&
+                  summary.metrics[m.key] !== null &&
+                  previous.metrics[m.key] !== null
+                    ? changeLabel(
+                        summary.metrics[m.key]!,
+                        previous.metrics[m.key]!,
+                        m.unit,
+                      )
+                    : rows.length
+                      ? '같은 기준의 이전 기간 비교 자료 없음'
+                      : '선택 기간의 자료 없음'}
+                </p>
+              </Card>
+            ))}
+          </section>
+          {rows.length > 1 && !summary.canAggregate && (
+            <p className="reviewed-caution">
+              광고별 집계 날짜가 다르거나 확인되지 않아 합계는 산출하지
+              않았습니다. 아래 광고별 수치를 확인하세요.
             </p>
-          </Card>
-        ))}
-      </section>
-      {rows.length > 1 && !summary.canAggregate && (
-        <p className="reviewed-caution">
-          광고별 집계 날짜가 다르거나 확인되지 않아 합계는 산출하지 않았습니다.
-          아래 광고별 수치를 확인하세요.
-        </p>
+          )}
+        </>
       )}
 
       <section id="campaigns" className="reviewed-ads-section">
@@ -479,86 +458,78 @@ export default function ReviewedDashboard({
         </div>
       </section>
 
-      <section
-        className="reviewed-history"
-        aria-labelledby="reviewed-history-title"
-      >
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">WEEKLY HISTORY</p>
-            <h2 id="reviewed-history-title">
-              {Number(month.slice(0, 4))}년 {Number(month.slice(5))}월 · 주간
-              성과
-            </h2>
+      {options.length > 0 && (
+        <section
+          className="reviewed-history"
+          aria-labelledby="reviewed-history-title"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">WEEKLY HISTORY</p>
+              <h2 id="reviewed-history-title">저장된 기간별 성과</h2>
+            </div>
           </div>
-        </div>
-        <Card className="reviewed-history-card">
-          <div className="table-scroll">
-            <table className="reviewed-history-table">
-              <caption className="sr-only">
-                선택 월의 주간별 성과, 정확한 집계 기간이 확인된 자료만 표시
-              </caption>
-              <thead>
-                <tr>
-                  <th>집계 기간</th>
-                  <th>확인 광고</th>
-                  <th>광고비</th>
-                  <th>조회수</th>
-                  <th>링크 클릭</th>
-                  <th>
-                    <span className="sr-only">기간 선택</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {options.map((option) => {
-                  const historyRows = rowsForSelection(data, option.key)
-                  const history = summarizeReviewed(historyRows)
-                  return (
-                    <tr
-                      key={option.key}
-                      className={selection === option.key ? 'selected' : ''}
-                    >
-                      <td>
-                        <strong>{option.label}</strong>
-                        <span>
-                          {dateLabel(option.start)} — {dateLabel(option.end)}
-                        </span>
-                      </td>
-                      <td>
-                        {historyRows.length
-                          ? `${historyRows.length}/2개`
-                          : '자료 대기'}
-                      </td>
-                      <td>{valueLabel(history.metrics.spend, '원')}</td>
-                      <td>{valueLabel(history.metrics.views, '회')}</td>
-                      <td>{valueLabel(history.metrics.linkClicks, '회')}</td>
-                      <td>
-                        <Button
-                          variant={
-                            selection === option.key ? 'secondary' : 'ghost'
-                          }
-                          size="sm"
-                          aria-label={`${option.label} 성과 보기`}
-                          onClick={() => setSelection(option.key)}
-                        >
-                          보기
-                          <ArrowUpRight size={13} aria-hidden="true" />
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p>
-            1~7일 · 8~14일 · 15~21일 · 22~28일로 구분하고 29일부터는 월말 잔여
-            기간으로 표시합니다. 집계일 미확인·전체 기간 누적 자료를 임의로
-            나누지 않습니다.
-          </p>
-        </Card>
-      </section>
+          <Card className="reviewed-history-card">
+            <div className="table-scroll">
+              <table className="reviewed-history-table">
+                <caption className="sr-only">
+                  집계 기간이 확인된 실제 성과 기록
+                </caption>
+                <thead>
+                  <tr>
+                    <th>집계 기간</th>
+                    <th>확인 광고</th>
+                    <th>광고비</th>
+                    <th>조회수</th>
+                    <th>링크 클릭</th>
+                    <th>
+                      <span className="sr-only">기간 선택</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {options.map((option) => {
+                    const historyRows = rowsForSelection(data, option.key)
+                    const history = summarizeReviewed(historyRows)
+                    return (
+                      <tr
+                        key={option.key}
+                        className={selection === option.key ? 'selected' : ''}
+                      >
+                        <td>
+                          <strong>{option.label}</strong>
+                        </td>
+                        <td>
+                          {historyRows.length
+                            ? `${historyRows.length}/2개`
+                            : '자료 대기'}
+                        </td>
+                        <td>{valueLabel(history.metrics.spend, '원')}</td>
+                        <td>{valueLabel(history.metrics.views, '회')}</td>
+                        <td>{valueLabel(history.metrics.linkClicks, '회')}</td>
+                        <td>
+                          <Button
+                            variant={
+                              selection === option.key ? 'secondary' : 'ghost'
+                            }
+                            size="sm"
+                            aria-label={`${option.label} 성과 보기`}
+                            onClick={() => setSelection(option.key)}
+                          >
+                            보기
+                            <ArrowUpRight size={13} aria-hidden="true" />
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p>집계 기간이 확인된 실제 성과 기록입니다.</p>
+          </Card>
+        </section>
+      )}
       <footer className="page-footer">
         <span>JB GOLF ACADEMY</span>
         <span>광고 성과 대시보드</span>
