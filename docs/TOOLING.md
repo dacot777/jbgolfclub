@@ -4,6 +4,8 @@
 
 인사이트 기록 메뉴·페이지·진입 배너·입력/백업 구현과 전용 검사를 제거했습니다. 기존 `#records` 주소는 성과 대시보드로 이동합니다. 과거 브라우저 저장 자료는 삭제하지 않습니다. 새 패키지·외부 서비스·유료 기능은 도입하지 않으며, 아래의 수동 기록 도입 내역은 이전 작업의 기록입니다.
 
+프론트엔드·Worker 빌드와 기존 브라우저 10개 검사가 통과했고 실제 배포 후 이전 링크의 대시보드 이동, 메뉴 제거, 모바일/예시 화면을 확인했습니다. 버전과 배포 범위는 [배포 기록](DEPLOYMENT.md)에 남겼습니다.
+
 ## 2026-11-06 — 캡처 기반 인사이트 기록
 
 - 이름·종류: IndexedDB / FileReader / Blob, 브라우저 기본 Web API. 목적: 회사 광고 캡처·수치를 현재 브라우저에 보관하고 JSON 백업/복원. 출처: https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API · https://developer.mozilla.org/en-US/docs/Web/API/FileReader.

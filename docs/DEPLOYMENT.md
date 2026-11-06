@@ -1,5 +1,14 @@
 # GitHub Pages 배포 기록
 
+## 2026-11-06 — 인사이트 기록 제거
+
+사용자 요청으로 인사이트 기록 메뉴·페이지·진입 배너·입력/백업 기능을 제거했습니다. 실제 주소는 https://jbgolf-connection.jbgolfacademy.workers.dev/ 이며 이전 `#records` 링크도 `#overview`로 이동합니다.
+
+- 소스 `1e08b5b`, Worker 버전 `0d8efec2-54d2-4333-93c9-157bf2f52ef8`.
+- 프론트엔드·Worker 빌드와 기존 Playwright 10개 통과. 실제 HTTPS Chromium에서 HTTP 200, 이전 링크의 대시보드 이동, 메뉴/배너 제거, 모바일 넘침 없음, 예시 화면 정상, JavaScript 오류 0을 확인했습니다.
+- 브라우저 저장소를 읽거나 삭제하지 않습니다. 기존 D1·Secret·공개 환경 변수와 Workers Free를 유지하며 플랜 변경·추가 과금 리소스를 도입하지 않았습니다.
+- 아래의 수동 기록 도입 내역은 이전 배포 기록이며 현재 제공 기능이 아닙니다.
+
 ## 2026-11-06 — 인사이트 수동 기록 화면 배포
 
 - 실제 주소: https://jbgolf-connection.jbgolfacademy.workers.dev/#records
