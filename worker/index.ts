@@ -3,7 +3,7 @@ import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
-import { collectMetaAds } from './meta-ads'
+import { collectMetaAds, readPublicMetaAds } from './meta-ads'
 import {
   authorizationUrl,
   configuration,
@@ -261,6 +261,8 @@ async function api(request: Request, env: Env) {
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
+  if (path === '/api/meta-ads' && request.method === 'GET')
+    return json(await readPublicMetaAds(env))
   if (path === '/api/media' && request.method === 'GET')
     return mediaFeed(request, env.DB)
   if (path === '/api/connection' && request.method === 'GET')

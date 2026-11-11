@@ -302,3 +302,32 @@ export async function readMetaAds(env: Env): Promise<Report> {
   }
   return report
 }
+
+export async function readPublicMetaAds(env: Env) {
+  const { status, lastSyncedAt, currency, timeZone, periods, daily } =
+    await readMetaAds(env)
+  return {
+    status,
+    lastSyncedAt,
+    currency,
+    timeZone,
+    periods: periods.map(
+      ({ kind, since, until, spend, impressions, linkClicks, reach }) => ({
+        kind,
+        since,
+        until,
+        spend,
+        impressions,
+        linkClicks,
+        reach,
+      }),
+    ),
+    daily: daily.map(({ date, adName, spend, impressions, linkClicks }) => ({
+      date,
+      adName,
+      spend,
+      impressions,
+      linkClicks,
+    })),
+  }
+}

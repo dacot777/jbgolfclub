@@ -46,6 +46,7 @@ import {
 } from '@/lib/report'
 import * as demo from '@/lib/demo'
 import { InstagramConnectPanel } from '@/components/instagram-connect-panel'
+import { MetaAdsReport } from '@/components/meta-ads-report'
 import {
   useInstagramConnection,
   instagramErrors,
@@ -121,19 +122,14 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState(() =>
-    [
-      'news',
-      'blog',
-      'campaigns',
-      'admin',
-      ...(__INSTAGRAM_BACKEND__ ? ['ad-report'] : []),
-    ].includes(window.location.hash.slice(1))
+    ['news', 'blog', 'campaigns', 'admin'].includes(
+      window.location.hash.slice(1),
+    )
       ? window.location.hash.slice(1)
       : 'overview',
   )
   const isMedia = active === 'news' || active === 'blog'
-  const isAdReport = active === 'ad-report'
-  const isAdmin = active === 'admin' || isAdReport
+  const isAdmin = active === 'admin'
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isAdmin
@@ -160,9 +156,11 @@ export default function App() {
           window.location.pathname + window.location.search + '#overview',
         )
         setActive('overview')
+      } else if (__INSTAGRAM_BACKEND__ && target === 'ad-report') {
+        setSample(false)
+        setActive('overview')
       } else if (
-        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target) ||
-        (__INSTAGRAM_BACKEND__ && target === 'ad-report')
+        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
       )
         setActive(target)
       else if (!target) setActive('overview')
@@ -173,7 +171,9 @@ export default function App() {
   useEffect(() => {
     adminClicks.current = { count: 0, lastAt: 0 }
     if (isMedia || isAdmin) window.scrollTo({ top: 0, behavior: 'instant' })
-  }, [active, isMedia, isAdmin])
+    else if (window.location.hash === '#ad-report' && !sample)
+      document.getElementById('ad-report')?.scrollIntoView()
+  }, [active, isMedia, isAdmin, sample])
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.hash === '#records' || url.hash === '#weekly') {
@@ -393,15 +393,13 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {isAdReport
-                ? '광고 자동 보고서'
-                : isAdmin
-                  ? '관리자'
-                  : active === 'news'
-                    ? '기사'
-                    : active === 'blog'
-                      ? '블로그'
-                      : '성과 대시보드'}
+              {isAdmin
+                ? '관리자'
+                : active === 'news'
+                  ? '기사'
+                  : active === 'blog'
+                    ? '블로그'
+                    : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
@@ -434,6 +432,42 @@ export default function App() {
           </div>
         </header>
         <main id="main">
+          {!isAdmin && !isMedia && (
+            <>
+              <section id="overview" className="page-heading">
+                <div>
+                  <p className="eyebrow">MARKETING OVERVIEW</p>
+                  <h1>
+                    인스타그램 광고 성과<span>.</span>
+                  </h1>
+                  <p className="page-description">
+                    {showReviewed
+                      ? 'JB GOLF ACADEMY · 광고별 성과와 주간 변화를 한눈에 확인하세요.'
+                      : 'JB골프아카데미와 JB골프클럽의 광고 흐름을 한눈에 확인하세요.'}
+                  </p>
+                </div>
+                {!showReviewed && (
+                  <Button
+                    variant="outline"
+                    className="period-button"
+                    onClick={() => setDialog('period')}
+                  >
+                    <CalendarDays aria-hidden="true" />
+                    <span>{period.current}</span>
+                    <ChevronDown aria-hidden="true" />
+                  </Button>
+                )}
+              </section>
+              {__INSTAGRAM_BACKEND__ && !sample && (
+                <section id="ad-report" aria-labelledby="meta-report-title">
+                  <div className="section-heading">
+                    <h2 id="meta-report-title">광고 자동 보고서</h2>
+                  </div>
+                  <MetaAdsReport />
+                </section>
+              )}
+            </>
+          )}
           {reviewed.error && !sample && !isMedia && !isAdmin && (
             <div className="reviewed-load-error" role="status">
               {reviewed.error}
@@ -446,7 +480,7 @@ export default function App() {
             <Suspense
               fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
             >
-              <AdminAnalytics showAds={isAdReport} />
+              <AdminAnalytics />
             </Suspense>
           ) : isMedia ? (
             <Suspense
@@ -467,33 +501,6 @@ export default function App() {
             </Suspense>
           ) : (
             <>
-              <section id="overview" className="page-heading">
-                <div>
-                  <p className="eyebrow">MARKETING OVERVIEW</p>
-                  <h1>
-                    인스타그램 광고 성과<span>.</span>
-                  </h1>
-                  <p className="page-description">
-                    JB골프아카데미와 JB골프클럽의 광고 흐름을 한눈에 확인하세요.
-                  </p>
-                  {__INSTAGRAM_BACKEND__ && !sample && (
-                    <a className="meta-report-link" href="#ad-report">
-                      광고 자동 보고서{' '}
-                      <ArrowUpRight aria-hidden="true" size={16} />
-                    </a>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  className="period-button"
-                  onClick={() => setDialog('period')}
-                >
-                  <CalendarDays aria-hidden="true" />
-                  <span>{period.current}</span>
-                  <ChevronDown aria-hidden="true" />
-                </Button>
-              </section>
-
               <div
                 className={sample ? 'notice sample-notice' : 'notice'}
                 role="status"
@@ -1153,7 +1160,10 @@ export default function App() {
             <>
               <InstagramConnectPanel
                 model={instagram}
-                onReport={() => setDialog(null)}
+                onReport={() => {
+                  setSample(false)
+                  setDialog(null)
+                }}
                 onSample={() => {
                   setSample(true)
                   setDialog(null)

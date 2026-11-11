@@ -22,3 +22,7 @@ export interface MetaAdsReport {
   periods: MetaAdsPeriod[]
   daily: MetaAdsDaily[]
 }
+
+export type PublicMetaAdsReport = Omit<MetaAdsReport, 'daily'> & {
+  daily: Omit<MetaAdsDaily, 'adId'>[]
+}

@@ -155,13 +155,12 @@ async function mockAdmin(
   }
 }
 
-test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검증된 기간과 광고별 수치만 조회한다', async ({
+test('첫 화면에서 로그인 없이 수집된 광고 실적을 보고 미수집 지표와 0을 구분한다', async ({
   page,
 }) => {
   const api = await mockAdmin(page)
-  let reads = 0
-  await page.route('**/api/admin/meta-ads', (route) => {
-    reads++
+  await page.route('**/api/meta-ads', (route) => {
+    expect(route.request().method()).toBe('GET')
     return route.fulfill({
       json: {
         status: 'error',
@@ -191,7 +190,6 @@ test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검�
         daily: [
           {
             date: '2026-03-04',
-            adId: '1',
             adName: '오늘의 가상 광고',
             spend: 500,
             impressions: 7,
@@ -199,7 +197,6 @@ test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검�
           },
           {
             date: '2026-03-03',
-            adId: '1',
             adName: '전날의 가상 광고',
             spend: 700,
             impressions: 7,
@@ -210,16 +207,7 @@ test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검�
     })
   })
   await page.setViewportSize({ width: 320, height: 900 })
-  await page.goto('/#overview')
-  await page
-    .getByRole('link', { name: '광고 자동 보고서', exact: true })
-    .click()
-  await expect(
-    page.getByRole('heading', { name: '관리자 로그인' }),
-  ).toBeVisible()
-  expect(reads).toBe(0)
-  await page.getByLabel('관리자 비밀번호').fill(fakePassword)
-  await page.getByRole('button', { name: '로그인', exact: true }).click()
+  await page.goto('/')
   await expect(
     page.getByText('최근 광고 수집에 실패했습니다.', { exact: false }),
   ).toBeVisible()
@@ -232,6 +220,7 @@ test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검�
       .getByRole('cell', { name: '0', exact: true }),
   ).toBeVisible()
   await expect(page.getByText('오늘의 가상 광고')).toBeVisible()
+  await expect(page.getByLabel('관리자 비밀번호')).toHaveCount(0)
   await page.getByLabel('조회 날짜').selectOption('2026-03-03')
   await expect(page.getByText('전날의 가상 광고')).toBeVisible()
   expect(
@@ -240,15 +229,13 @@ test('공개 대시보드에서 광고 보고서로 이동한 관리자는 검�
     ),
   ).toBe(true)
   expect(api.reports()).toBe(0)
-  await page.getByRole('button', { name: '로그아웃' }).click()
-  await expect(page.getByText('전날의 가상 광고')).toHaveCount(0)
 })
 
-test('첫 광고 연결을 기다리는 동안 빈 기간이나 0을 표시하지 않는다', async ({
+test('기존 광고 보고서 링크에서도 익명 방문자는 첫 수집 전 상태를 확인한다', async ({
   page,
 }) => {
-  await mockAdmin(page, { authenticated: true })
-  await page.route('**/api/admin/meta-ads', (route) =>
+  const api = await mockAdmin(page)
+  await page.route('**/api/meta-ads', (route) =>
     route.fulfill({
       json: {
         status: 'unconfigured',
@@ -262,9 +249,17 @@ test('첫 광고 연결을 기다리는 동안 빈 기간이나 0을 표시하�
   )
   await page.goto('/#ad-report')
   await expect(
-    page.getByText('광고 계정 연결 대기 중입니다.', { exact: false }),
+    page
+      .locator('#ad-report')
+      .getByRole('heading', { name: '광고 자동 보고서' }),
   ).toBeVisible()
-  await expect(page.getByRole('table')).toHaveCount(0)
+  await expect(page.locator('#ad-report')).toContainText(
+    '광고 계정 연결을 기다리고 있습니다.',
+  )
+  await expect(page.getByRole('region', { name: '주간 실적' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '월간 실적' })).toHaveCount(0)
+  await expect(page.getByLabel('관리자 비밀번호')).toHaveCount(0)
+  expect(api.reports()).toBe(0)
 })
 
 for (const width of [1440, 390, 320]) {

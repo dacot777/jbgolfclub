@@ -47,6 +47,11 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
 }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
+  const reportReads: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/meta-ads')
+      reportReads.push(request.url())
+  })
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.setViewportSize({ width: 1440, height: 1024 })
   await page.goto('/')
@@ -55,6 +60,7 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
   await expect(page.getByText('Instagram 계정 미연결')).toBeVisible()
+  await expect(page.locator('#ad-report')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toBeDisabled()
@@ -83,6 +89,7 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toBeDisabled()
   expect(errors).toEqual([])
+  expect(reportReads).toEqual([])
 })
 
 for (const width of [375, 768, 1024, 1440]) {

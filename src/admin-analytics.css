@@ -1,41 +1,6 @@
 .admin-analytics {
   min-width: 0;
 }
-.meta-report {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-.meta-report .admin-private-note,
-.meta-report .admin-error,
-.meta-report .admin-toolbar {
-  margin: 0;
-}
-.meta-report-updated {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.meta-report-section {
-  min-width: 0;
-  gap: 14px;
-  padding: 20px;
-}
-.meta-report-section h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-.meta-report-section .admin-view-scroll th,
-.meta-report-section .admin-view-scroll td {
-  font-size: 13px;
-  padding: 12px;
-}
-.meta-report-section th[scope='row'] {
-  white-space: normal;
-  min-width: 130px;
-  max-width: 320px;
-  overflow-wrap: anywhere;
-}
 .admin-login-shell {
   max-width: 470px;
   margin: 35px auto;

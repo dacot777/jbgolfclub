@@ -1,10 +1,11 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import type {
-  MetaAdsReport as Report,
+  PublicMetaAdsReport as Report,
   MetaAdsPeriod as Period,
 } from '@/lib/meta-ads-types'
+import '@/meta-ads-report.css'
 
 const metric = (value: number | null) =>
   value == null ? '미수집' : value.toLocaleString('ko-KR')
@@ -26,9 +27,9 @@ function PeriodReport({
   const title = kind === 'week' ? '주간 실적' : '월간 실적'
   return (
     <Card className="meta-report-section">
-      <h2>{title}</h2>
+      <h3>{title}</h3>
       <div
-        className="admin-view-scroll"
+        className="meta-table-scroll"
         tabIndex={0}
         role="region"
         aria-label={title}
@@ -63,13 +64,11 @@ function PeriodReport({
   )
 }
 
-export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
+export function MetaAdsReport() {
   const [report, setReport] = useState<Report | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [retry, setRetry] = useState(0)
   const [selectedDate, setSelectedDate] = useState('')
-  const expire = useEffectEvent(onExpired)
-
   useEffect(() => {
     const controller = new AbortController()
     let busy = false
@@ -79,21 +78,14 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
       busy = true
       lastRequest = Date.now()
       try {
-        const response = await fetch('/api/admin/meta-ads', {
-          credentials: 'same-origin',
+        const response = await fetch('/api/meta-ads', {
+          credentials: 'omit',
           cache: 'no-store',
           signal: AbortSignal.any([
             controller.signal,
             AbortSignal.timeout(10000),
           ]),
         })
-        if (response.status === 401) {
-          if (!controller.signal.aborted) {
-            setReport(null)
-            expire()
-          }
-          return
-        }
         if (!response.ok) throw new Error('report_unavailable')
         const data: Report = await response.json()
         if (
@@ -125,11 +117,20 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
         void read()
     }
     void read()
-    const timer = window.setInterval(refresh, 60 * 60 * 1000)
+    // The collector runs at :15. Refresh an open dashboard after each run.
+    const next = new Date()
+    next.setMinutes(17, 0, 0)
+    if (next.getTime() <= Date.now()) next.setHours(next.getHours() + 1)
+    let timer: number
+    const first = window.setTimeout(() => {
+      refresh()
+      timer = window.setInterval(refresh, 60 * 60 * 1000)
+    }, next.getTime() - Date.now())
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => {
       controller.abort()
+      window.clearTimeout(first)
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
@@ -153,7 +154,7 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
     )
   if (!report)
     return (
-      <p role="status" className="admin-loading">
+      <p role="status" className="meta-report-note">
         광고 보고서를 불러오는 중입니다.
       </p>
     )
@@ -191,18 +192,18 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
   return (
     <div className="meta-report">
       {report.status === 'unconfigured' && (
-        <p className="admin-private-note" role="status">
-          광고 계정 연결 대기 중입니다. 광고 계정 소유자가 Meta의 광고 성과 읽기
-          권한을 승인하고 서버에 연결하면 매시간 실적을 가져옵니다.
+        <p className="meta-report-note" role="status">
+          광고 계정 연결을 기다리고 있습니다.
         </p>
       )}
       {report.status === 'pending' && (
-        <p className="admin-private-note" role="status">
-          첫 광고 실적 수집을 기다리고 있습니다.
+        <p className="meta-report-note" role="status">
+          첫 광고 실적 수집을 기다리고 있습니다. 매시 15분에 인스타그램 광고
+          실적을 가져옵니다.
         </p>
       )}
       {report.status === 'error' && (
-        <p className="admin-error" role="status">
+        <p className="meta-report-note" role="status">
           최근 광고 수집에 실패했습니다.
           {syncTime
             ? ' 아래에 마지막으로 수집한 실적을 표시합니다.'
@@ -217,7 +218,7 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
         </p>
       )}
       {report.status === 'ready' && !periods.length && !report.daily.length && (
-        <p className="admin-private-note">
+        <p className="meta-report-note">
           조회한 기간에 Meta에서 반환한 Instagram 광고 실적이 없습니다.
         </p>
       )}
@@ -225,8 +226,8 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
       <PeriodReport kind="month" periods={periods} spendLabel={spendLabel} />
       {dates.length > 0 && (
         <Card className="meta-report-section">
-          <div className="admin-toolbar">
-            <h2>광고별 일일 실적</h2>
+          <div className="meta-report-toolbar">
+            <h3>광고별 일일 실적</h3>
             <label>
               조회 날짜
               <select
@@ -242,7 +243,7 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
             </label>
           </div>
           <div
-            className="admin-view-scroll"
+            className="meta-table-scroll"
             tabIndex={0}
             role="region"
             aria-label="광고별 일일 실적"
@@ -260,8 +261,8 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
               <tbody>
                 {report.daily
                   .filter((row) => row.date === day)
-                  .map((row) => (
-                    <tr key={row.adId}>
+                  .map((row, index) => (
+                    <tr key={index}>
                       <th scope="row">{row.adName}</th>
                       <td>{spendLabel(row.spend)}</td>
                       <td>{metric(row.impressions)}</td>

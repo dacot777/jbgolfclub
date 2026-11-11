@@ -6,8 +6,10 @@ import { Miniflare, createFetchMock } from 'miniflare'
 
 const bundle = await build({
   stdin: {
-    contents: `import { collectMetaAds, readMetaAds } from './worker/meta-ads.ts';
+    contents: `import worker from './worker/index.ts';
+      import { collectMetaAds, readMetaAds } from './worker/meta-ads.ts';
       export default { async fetch(req, env) {
+        if (new URL(req.url).pathname.startsWith('/api/')) return worker.fetch(req, env);
         if (req.method === 'POST') await collectMetaAds(env, new Date('2026-02-01T16:00:00Z'));
         return Response.json(await readMetaAds(env))
       } }`,
@@ -198,6 +200,46 @@ test('a worker without credentials skips collection and never reports authorizat
     assert.equal(
       (await f.db.prepare('SELECT COUNT(*) AS n FROM meta_ads_sync').first()).n,
       0,
+    )
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('the public report reads the saved snapshot without login and exposes only display fields', async () => {
+  const f = await fixture()
+  const url = 'https://mock.test/api/meta-ads'
+  try {
+    const pending = await f.mf.dispatchFetch(url)
+    assert.equal(pending.status, 200)
+    assert.equal((await pending.json()).status, 'pending')
+    f.success('105')
+    const saved = await f.request('POST')
+    await f.db
+      .prepare(
+        `UPDATE meta_ads_reports SET payload=json_set(payload,
+        CASE WHEN kind='day' THEN '$[0].campaign_id' ELSE '$.account_id' END, 'test-private-id')
+       WHERE kind!='day' OR since='2026-02-02'`,
+      )
+      .run()
+    const response = await f.mf.dispatchFetch(url)
+    assert.equal(response.status, 200)
+    const report = await response.json()
+    assert.deepEqual(report, {
+      status: 'ready',
+      lastSyncedAt: saved.lastSyncedAt,
+      currency: saved.currency,
+      timeZone: saved.timeZone,
+      periods: saved.periods,
+      daily: saved.daily.map(({ adId, ...display }) => display),
+    })
+    assert.equal(
+      (await f.mf.dispatchFetch(url, { method: 'POST' })).status,
+      404,
+    )
+    assert.equal(
+      (await f.db.prepare('SELECT status FROM meta_ads_sync').first()).status,
+      'ready',
     )
   } finally {
     await f.mf.dispose()

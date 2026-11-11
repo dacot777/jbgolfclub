@@ -311,22 +311,6 @@ export default function ReviewedDashboard({
 
   return (
     <div className="reviewed-dashboard">
-      <section id="overview" className="page-heading">
-        <div>
-          <p className="eyebrow">MARKETING OVERVIEW</p>
-          <h1>
-            인스타그램 광고 성과<span>.</span>
-          </h1>
-          <p className="page-description">
-            JB GOLF ACADEMY · 광고별 성과와 주간 변화를 한눈에 확인하세요.
-          </p>
-        </div>
-        {__INSTAGRAM_BACKEND__ && (
-          <a className="meta-report-link" href="#ad-report">
-            광고 자동 보고서 <ArrowUpRight aria-hidden="true" size={16} />
-          </a>
-        )}
-      </section>
       <section className="reviewed-period-control" aria-label="성과 조회 기간">
         <div>
           <CalendarDays aria-hidden="true" />

@@ -108,11 +108,36 @@ test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await mockData(page)
+  await page.route('**/api/meta-ads', (route) =>
+    route.fulfill({
+      json: {
+        status: 'ready',
+        lastSyncedAt: '2026-11-15T00:15:00Z',
+        currency: 'KRW',
+        timeZone: 'Asia/Seoul',
+        periods: [
+          {
+            kind: 'week',
+            since: '2026-11-09',
+            until: '2026-11-15',
+            spend: 7234,
+            impressions: 102,
+            linkClicks: 6,
+            reach: 80,
+          },
+        ],
+        daily: [],
+      },
+    }),
+  )
   await page.goto('/')
   await expect(
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
   await expect(page.locator('.reviewed-dashboard')).toBeVisible()
+  await expect(page.getByRole('region', { name: '주간 실적' })).toContainText(
+    '7,234',
+  )
   await expect(adValues(page)).toContainText('1,200원')
   await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
   await expect(
