@@ -1,4 +1,5 @@
 import type { Env } from './types'
+import { readMetaAds } from './meta-ads'
 import { base64Url, equal, hash, randomSecret } from './crypto'
 import {
   ANALYTICS_MENUS,
@@ -515,6 +516,10 @@ export async function adminAnalytics(
         .bind(session.session_hash)
         .run()
       return json({ authenticated: false }, 200, cookie(ADMIN_COOKIE, '', 0))
+    }
+    if (path === '/api/admin/meta-ads' && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return json(await readMetaAds(env))
     }
     if (path === '/api/admin/analytics' && request.method === 'GET')
       return await analytics(request, env)

@@ -122,6 +122,7 @@ test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아�
   const f = await fixture()
   try {
     assert.equal((await f.send('/api/admin/analytics')).status, 401)
+    assert.equal((await f.send('/api/admin/meta-ads')).status, 401)
     assert.deepEqual(await (await f.send('/api/admin/session')).json(), {
       configured: true,
       authenticated: false,
@@ -138,6 +139,10 @@ test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아�
     assert.equal(auth.configured, true)
     assert.equal(auth.authenticated, true)
     assert.equal(auth.csrfToken.length, 43)
+    const ads = await f.send('/api/admin/meta-ads', { cookie: auth.cookie })
+    assert.equal(ads.status, 200)
+    assert.match(ads.headers.get('Cache-Control'), /no-store/)
+    assert.equal((await ads.json()).status, 'unconfigured')
     const rawSession = (
       await f.db.prepare('SELECT * FROM admin_sessions').all()
     ).results[0]

@@ -71,7 +71,7 @@ test('프로필 연결을 광고 연동으로 표시하지 않으며 보호된 �
   })
   await page.goto('/')
   await expect(
-    page.getByText('Instagram 연결됨 · 광고 권한 대기'),
+    page.getByText('Instagram 프로필 연결됨', { exact: true }),
   ).toBeVisible()
   await expect(page.locator('.metric-card').first()).toContainText('—')
   await expect(page.locator('.metric-card').first()).not.toContainText(
@@ -79,7 +79,7 @@ test('프로필 연결을 광고 연동으로 표시하지 않으며 보호된 �
   )
   await page.getByRole('button', { name: '계정 연결', exact: true }).click()
   await expect(page.locator('.connection-facts')).toContainText(
-    '별도 설정 필요',
+    '광고 자동 보고서',
   )
   await page.getByRole('button', { name: '연결 해제', exact: true }).click()
   await expect(page.locator('.disconnect-confirm')).toBeVisible()
@@ -104,9 +104,9 @@ test('주소의 성공 표시만으로 연결됐다고 주장하지 않는다', 
   await page.goto('/?instagram_connected=1')
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByText('Instagram 계정 미연결')).toBeVisible()
-  await expect(page.getByText('Instagram 연결됨 · 광고 권한 대기')).toHaveCount(
-    0,
-  )
+  await expect(
+    page.getByText('Instagram 프로필 연결됨', { exact: true }),
+  ).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '인스타그램으로 로그인하여 연결' }),
   ).toBeVisible()
@@ -122,7 +122,7 @@ test('상태 조회 실패를 연결 성공으로 바꾸지 않는다', async ({
     '연결 상태를 확인하지 못했습니다.',
   )
   await expect(page.getByRole('button', { name: '다시 확인' })).toBeVisible()
-  await expect(page.getByText('Instagram 연결됨 · 광고 권한 대기')).toHaveCount(
-    0,
-  )
+  await expect(
+    page.getByText('Instagram 프로필 연결됨', { exact: true }),
+  ).toHaveCount(0)
 })

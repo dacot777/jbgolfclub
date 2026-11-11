@@ -121,14 +121,19 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState(() =>
-    ['news', 'blog', 'campaigns', 'admin'].includes(
-      window.location.hash.slice(1),
-    )
+    [
+      'news',
+      'blog',
+      'campaigns',
+      'admin',
+      ...(__INSTAGRAM_BACKEND__ ? ['ad-report'] : []),
+    ].includes(window.location.hash.slice(1))
       ? window.location.hash.slice(1)
       : 'overview',
   )
   const isMedia = active === 'news' || active === 'blog'
-  const isAdmin = active === 'admin'
+  const isAdReport = active === 'ad-report'
+  const isAdmin = active === 'admin' || isAdReport
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isAdmin
@@ -156,7 +161,8 @@ export default function App() {
         )
         setActive('overview')
       } else if (
-        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
+        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target) ||
+        (__INSTAGRAM_BACKEND__ && target === 'ad-report')
       )
         setActive(target)
       else if (!target) setActive('overview')
@@ -387,13 +393,15 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {isAdmin
-                ? '관리자'
-                : active === 'news'
-                  ? '기사'
-                  : active === 'blog'
-                    ? '블로그'
-                    : '성과 대시보드'}
+              {isAdReport
+                ? '광고 자동 보고서'
+                : isAdmin
+                  ? '관리자'
+                  : active === 'news'
+                    ? '기사'
+                    : active === 'blog'
+                      ? '블로그'
+                      : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
@@ -410,7 +418,7 @@ export default function App() {
                       : linkedInstagram
                         ? linkedInstagram.needsReconnect
                           ? 'Instagram 재연결 필요'
-                          : 'Instagram 연결됨 · 광고 권한 대기'
+                          : 'Instagram 프로필 연결됨'
                         : 'Instagram 계정 미연결'}
             </span>
             <button
@@ -438,7 +446,7 @@ export default function App() {
             <Suspense
               fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
             >
-              <AdminAnalytics />
+              <AdminAnalytics showAds={isAdReport} />
             </Suspense>
           ) : isMedia ? (
             <Suspense
@@ -468,6 +476,12 @@ export default function App() {
                   <p className="page-description">
                     JB골프아카데미와 JB골프클럽의 광고 흐름을 한눈에 확인하세요.
                   </p>
+                  {__INSTAGRAM_BACKEND__ && !sample && (
+                    <a className="meta-report-link" href="#ad-report">
+                      광고 자동 보고서{' '}
+                      <ArrowUpRight aria-hidden="true" size={16} />
+                    </a>
+                  )}
                 </div>
                 <Button
                   variant="outline"
@@ -504,8 +518,8 @@ export default function App() {
                       {sample
                         ? '화면 검토용 합성 데이터입니다. 실제 광고 실적이 아닙니다.'
                         : linkedInstagram
-                          ? '광고 계정의 실적 조회 권한은 별도로 설정해야 합니다.'
-                          : '계정 연결 전에는 실적을 0으로 표시하지 않습니다.'}
+                          ? '광고 자동 보고서에서 광고 계정의 실적을 확인하세요.'
+                          : '계정 연결 메뉴에서 프로필을 연결할 수 있습니다.'}
                     </span>
                   </span>
                 </div>
@@ -519,7 +533,7 @@ export default function App() {
                 <div className="report-body">
                   <div className="report-kicker">
                     <Sparkles size={14} aria-hidden="true" /> THIS WEEK’S BRIEF{' '}
-                    <span>{sample ? '예시 보고' : '연결 대기'}</span>
+                    <span>{sample ? '예시 보고' : '저장된 자료 없음'}</span>
                   </div>
                   <h2 id="report-title">인스타그램 광고 주간업무보고</h2>
                   {sample ? (
@@ -530,10 +544,9 @@ export default function App() {
                         이번 주의 숫자에서, 다음 주의 방향까지.
                       </p>
                       <p className="report-placeholder">
-                        광고 실적 조회 권한을 연결하면 주간 핵심 성과·지난주
-                        대비 변화·월간 누적 실적을
-                        <br className="desktop-only" /> 같은 집계 기준으로
-                        정리한 보고 문장이 표시됩니다.
+                        저장된 보고 자료가 없습니다.
+                        {__INSTAGRAM_BACKEND__ &&
+                          ' Meta에서 수집한 실적은 광고 자동 보고서에서 확인하세요.'}
                       </p>
                     </>
                   )}
@@ -542,7 +555,7 @@ export default function App() {
                       <i />
                       {sample
                         ? `예시 집계 기준 · 2026.11.05 ${period.time}`
-                        : '마지막 갱신 성공: 아직 없음'}
+                        : '저장된 보고서 없음'}
                     </span>
                     <span>한국 표준시 · Instagram 게재 실적</span>
                   </div>
@@ -1030,12 +1043,12 @@ export default function App() {
                                     <strong>
                                       {sample
                                         ? '조건에 맞는 광고가 없습니다'
-                                        : '연결된 광고 계정이 없습니다'}
+                                        : '저장된 광고 자료가 없습니다'}
                                     </strong>
                                     <p>
                                       {sample
                                         ? '검색어 또는 브랜드 필터를 변경해 주세요.'
-                                        : '광고 계정의 조회 권한을 연결하면 Instagram에 게재된 광고를 확인할 수 있습니다.'}
+                                        : '계정 연결 안내에서 광고 실적을 확인하는 방법을 볼 수 있습니다.'}
                                     </p>
                                     {!sample && (
                                       <Button
@@ -1073,8 +1086,8 @@ export default function App() {
                   {sample
                     ? '예시 데이터 · 실제 Meta API와 연결되지 않은 화면입니다.'
                     : linkedInstagram
-                      ? '인스타그램 연결됨 · 광고 실적 권한은 아직 설정되지 않았습니다.'
-                      : '인스타그램 미연결 · 실제 데이터 수집은 아직 시작되지 않았습니다.'}
+                      ? '인스타그램 프로필 연결됨'
+                      : '인스타그램 프로필 미연결'}
                 </span>
                 <button onClick={() => setDialog('connect')}>
                   연결 도움말
@@ -1140,6 +1153,7 @@ export default function App() {
             <>
               <InstagramConnectPanel
                 model={instagram}
+                onReport={() => setDialog(null)}
                 onSample={() => {
                   setSample(true)
                   setDialog(null)

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { MetaAdsReport } from '@/components/meta-ads-report'
 import {
   ANALYTICS_MENU_NAMES,
   type AdminSession,
@@ -172,7 +173,11 @@ function VisitRecord({ visit }: { visit: AnalyticsVisit }) {
   )
 }
 
-export default function AdminAnalytics() {
+export default function AdminAnalytics({
+  showAds = false,
+}: {
+  showAds?: boolean
+}) {
   const [session, setSession] = useState<AdminSession | null>(null)
   const [checking, setChecking] = useState(true)
   const [password, setPassword] = useState('')
@@ -216,7 +221,7 @@ export default function AdminAnalytics() {
     if (error) errorRef.current?.focus()
   }, [error])
   useEffect(() => {
-    if (!session?.authenticated) return
+    if (!session?.authenticated || showAds) return
     let active = true
     setLoading(true)
     setError('')
@@ -259,9 +264,9 @@ export default function AdminAnalytics() {
     return () => {
       active = false
     }
-  }, [session?.authenticated, days, page, refresh])
+  }, [session?.authenticated, days, page, refresh, showAds])
   useEffect(() => {
-    if (!session?.authenticated) return
+    if (!session?.authenticated || showAds) return
     const update = () => {
       if (
         document.visibilityState === 'visible' &&
@@ -275,7 +280,7 @@ export default function AdminAnalytics() {
       window.removeEventListener('focus', update)
       document.removeEventListener('visibilitychange', update)
     }
-  }, [session?.authenticated])
+  }, [session?.authenticated, showAds])
 
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -364,7 +369,11 @@ export default function AdminAnalytics() {
           />
           <p className="eyebrow">PRIVATE WORKSPACE</p>
           <h1>관리자 로그인</h1>
-          <p>방문 기록은 관리자 인증 후에만 확인할 수 있습니다.</p>
+          <p>
+            {showAds
+              ? '사이트 관리자 비밀번호로 로그인해 인스타그램 광고 보고서를 확인하세요.'
+              : '방문 기록은 관리자 인증 후에만 확인할 수 있습니다.'}
+          </p>
           {errorNotice}
           {session && !session.configured && (
             <p className="admin-unconfigured" role="status">
@@ -394,33 +403,48 @@ export default function AdminAnalytics() {
       </section>
     )
 
+  const heading = (
+    <section className="page-heading">
+      <div>
+        <p className="eyebrow">PRIVATE WORKSPACE</p>
+        <h1>
+          {showAds ? '광고 자동 보고서' : '방문 기록'}
+          <span>.</span>
+        </h1>
+        <p className="page-description">
+          {showAds
+            ? 'Instagram에 게재된 광고의 주간·월간 실적입니다.'
+            : '사이트 접속과 메뉴별 활동을 관리자만 확인합니다.'}
+        </p>
+      </div>
+      <div className="admin-actions">
+        <a className="admin-back" href="#overview">
+          <ArrowLeft size={15} aria-hidden="true" />
+          대시보드
+        </a>
+        <Button variant="outline" disabled={busy} onClick={() => void logout()}>
+          <LogOut aria-hidden="true" />
+          로그아웃
+        </Button>
+      </div>
+    </section>
+  )
+  if (showAds)
+    return (
+      <div className="admin-analytics">
+        {heading}
+        {errorNotice}
+        <MetaAdsReport
+          onExpired={() => {
+            setSession({ configured: true, authenticated: false })
+            setError('인증이 만료되었습니다. 다시 로그인해 주세요.')
+          }}
+        />
+      </div>
+    )
   return (
     <div className="admin-analytics">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">PRIVATE WORKSPACE</p>
-          <h1>
-            방문 기록<span>.</span>
-          </h1>
-          <p className="page-description">
-            사이트 접속과 메뉴별 활동을 관리자만 확인합니다.
-          </p>
-        </div>
-        <div className="admin-actions">
-          <a className="admin-back" href="#overview">
-            <ArrowLeft size={15} aria-hidden="true" />
-            대시보드
-          </a>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void logout()}
-          >
-            <LogOut aria-hidden="true" />
-            로그아웃
-          </Button>
-        </div>
-      </section>
+      {heading}
       <div className="admin-private-note">
         <ShieldCheck size={18} aria-hidden="true" />
         <p>

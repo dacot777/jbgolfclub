@@ -3,6 +3,7 @@ import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
+import { collectMetaAds } from './meta-ads'
 import {
   authorizationUrl,
   configuration,
@@ -385,7 +386,11 @@ export default {
     secured.headers.set('X-Frame-Options', 'DENY')
     return secured
   },
-  async scheduled(_event: unknown, env: Env) {
-    await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+  async scheduled(event: { cron: string }, env: Env) {
+    if (event.cron === '15 * * * *') {
+      await collectMetaAds(env)
+    } else if (event.cron === '0 0 * * *') {
+      await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+    }
   },
 }
