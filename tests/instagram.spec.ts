@@ -78,9 +78,7 @@ test('프로필 연결을 광고 연동으로 표시하지 않으며 보호된 �
     '864,500',
   )
   await page.getByRole('button', { name: '계정 연결', exact: true }).click()
-  await expect(page.locator('.connection-facts')).toContainText(
-    '광고 자동 보고서',
-  )
+  await expect(page.locator('.connection-facts')).toContainText('연결 완료')
   await page.getByRole('button', { name: '연결 해제', exact: true }).click()
   await expect(page.locator('.disconnect-confirm')).toBeVisible()
   await page.getByRole('button', { name: '연결 해제', exact: true }).click()

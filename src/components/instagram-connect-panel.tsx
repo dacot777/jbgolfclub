@@ -73,12 +73,12 @@ export function InstagramConnectPanel({
             </p>
             <p>
               <span>광고 실적 확인</span>
-              <strong>광고 자동 보고서</strong>
+              <strong>광고별 상세 실적</strong>
             </p>
           </div>
           <p className="connection-explanation">
-            인스타그램 프로필이 연결되었습니다. 광고 계정의 연결 상태와 실적은
-            광고 자동 보고서에서 확인할 수 있습니다.
+            인스타그램 프로필이 연결되었습니다. 광고 실적은 각 게시물의 상세
+            카드에서 확인할 수 있습니다.
           </p>
           {connected.refreshWarning && (
             <p className="connection-warning" role="status">
@@ -170,7 +170,7 @@ export function InstagramConnectPanel({
             <CircleAlert size={17} aria-hidden="true" />
             인스타그램 로그인만으로 광고비 조회 권한이 생기지는 않습니다.
             {enabled &&
-              ' 광고 계정의 연결 상태는 광고 자동 보고서에서 확인하세요.'}
+              ' 집행한 광고의 수치는 광고별 상세 실적에서 확인하세요.'}
           </p>
           <Button variant="outline" onClick={onSample}>
             <Eye aria-hidden="true" />
@@ -184,8 +184,8 @@ export function InstagramConnectPanel({
       </p>
       {enabled && (
         <div className="connection-legal">
-          <a href="#ad-report" onClick={onReport}>
-            광고 자동 보고서
+          <a href="#campaigns" onClick={onReport}>
+            광고별 상세 실적
           </a>
           <a href="/privacy" target="_blank" rel="noreferrer">
             개인정보 처리 안내

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
   CalendarDays,
@@ -12,6 +12,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { number, won, changeLabel } from '@/lib/report'
+import { cardRanges, type CardRange } from '@/lib/meta-card-performance'
+import type {
+  AdDeliveryStatus,
+  MetaAdCard,
+  MetaLifetimeReport,
+  MetaLifetimeRow,
+  PublicMetaAdsReport,
+} from '@/lib/meta-ads-types'
 import type {
   ReviewedAd,
   ReviewedMetricKey,
@@ -33,6 +41,58 @@ const metrics = [
 ] as const
 // Temporarily hidden for the submitted report. Re-enable only when requested.
 const SHOW_KPIS = false
+type DashboardAd = Omit<ReviewedAd, 'postUrl' | 'status'> &
+  Pick<MetaAdCard, 'startAt' | 'firstDeliveryDate' | 'pauseEvents'> & {
+    postUrl: string | null
+    deliveryStatus?: AdDeliveryStatus
+    promotedPostUrl?: string | null
+    discovered?: boolean
+  }
+const statusLabels: Record<AdDeliveryStatus, string> = {
+  active: '집행 중',
+  paused: '일시중단',
+  scheduled: '집행 예정',
+  archived: '종료됨',
+  inactive: '미게재',
+  unknown: '상태 확인 중',
+}
+const emptyReviewed: ReviewedPerformanceData = {
+  version: 1,
+  source: 'reviewed_screenshots',
+  updatedAt: null,
+  expectedAdCount: 2,
+  ads: [],
+  snapshots: [],
+}
+function displayAds(
+  reviewed: ReviewedAd[],
+  inventory: MetaAdCard[] = [],
+): DashboardAd[] {
+  const discovered = new Map(inventory.map((ad) => [ad.id, ad]))
+  const cards: DashboardAd[] = reviewed.map((ad) => {
+    const match = discovered.get(ad.id)
+    discovered.delete(ad.id)
+    return {
+      ...ad,
+      deliveryStatus: match?.status,
+      startAt: match?.startAt,
+      firstDeliveryDate: match?.firstDeliveryDate,
+      pauseEvents: match?.pauseEvents,
+      promotedPostUrl: match?.postUrl,
+      thumbnailUrl: ad.thumbnailUrl ?? match?.thumbnailUrl,
+    }
+  })
+  for (const ad of discovered.values()) {
+    cards.push({
+      ...ad,
+      deliveryStatus: ad.status,
+      discovered: true,
+      objective: '',
+      schedule: null,
+    })
+  }
+  return cards
+}
 const detailMetrics: { key: ReviewedMetricKey; label: string; unit: string }[] =
   [
     { key: 'spend', label: '지출', unit: '원' },
@@ -52,7 +112,7 @@ const detailMetrics: { key: ReviewedMetricKey; label: string; unit: string }[] =
 const dateLabel = (date: string) => date.replaceAll('-', '.')
 const valueLabel = (value: number | null, unit: string) =>
   value === null ? '—' : `${number(value)}${unit}`
-function reviewedTime(value: string | null) {
+function reviewedTime(value: string | null, seconds = false) {
   return value
     ? new Intl.DateTimeFormat('ko-KR', {
         timeZone: 'Asia/Seoul',
@@ -61,20 +121,26 @@ function reviewedTime(value: string | null) {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        ...(seconds ? { second: '2-digit' as const } : {}),
         hourCycle: 'h23',
       }).format(new Date(value))
     : '아직 없음'
 }
-function initialSelection(data: ReviewedPerformanceData) {
-  const confirmed = data.snapshots
-    .filter(
-      (s) =>
-        s.scope === 'selected_period' &&
-        s.period &&
-        Object.values(s.metrics).some((value) => value !== null),
-    )
-    .sort((a, b) => b.period!.end.localeCompare(a.period!.end))
-  return confirmed.length ? periodKey(confirmed[0].period!) : 'latest'
+function rangeLabel(range: CardRange) {
+  const dates =
+    range.since === range.until
+      ? dateLabel(range.since)
+      : `${dateLabel(range.since)} — ${dateLabel(range.until)}`
+  return `${{ week: '주간', month: '월간' }[range.kind]} · ${dates}`
+}
+function currencyLabel(value: number | null, currency: string | null) {
+  if (value == null) return '미수집'
+  if (currency === 'KRW') return won(Math.round(value))
+  return currency
+    ? new Intl.NumberFormat('ko-KR', { style: 'currency', currency }).format(
+        value,
+      )
+    : number(value)
 }
 function resultSummary(
   data: ReviewedPerformanceData,
@@ -106,61 +172,246 @@ function resultSummary(
     .join('\n')
 }
 
+function DeliveryDates({
+  ad,
+  range,
+  zone,
+}: {
+  ad: DashboardAd
+  range?: CardRange
+  zone: string
+}) {
+  const events = ad.pauseEvents ?? []
+  const asDay = (value: string) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(value))
+  const selected = range
+    ? events.filter((event) => {
+        const date = asDay(event.at)
+        if (date >= range.since && date <= range.until) return true
+        const lower = event.previousActiveAt
+          ? asDay(event.previousActiveAt)
+          : event.lastDeliveryDate
+        return (
+          event.source === 'observed' &&
+          lower &&
+          lower <= range.until &&
+          date >= range.since
+        )
+      })
+    : events.slice(0, 1)
+  return (
+    <dl className="ad-delivery-dates">
+      <div>
+        <dt>광고 시작 일시</dt>
+        <dd>
+          {ad.startAt
+            ? reviewedTime(ad.startAt, true) + ' (광고 세트 설정 · 한국시간)'
+            : ad.schedule?.start
+              ? dateLabel(ad.schedule.start) + ' (저장된 일정)'
+              : '확인 중'}
+        </dd>
+      </div>
+      {ad.firstDeliveryDate && (
+        <div>
+          <dt>첫 집행 확인일</dt>
+          <dd>{dateLabel(ad.firstDeliveryDate)}</dd>
+        </div>
+      )}
+      {selected.map((event) => (
+        <div className="ad-stop-record" key={event.source + event.at}>
+          <dt>
+            {event.source === 'meta'
+              ? '일시중단 시각'
+              : event.previousActiveAt || event.lastDeliveryDate
+                ? '중단 확인 (추정 구간)'
+                : '중단 상태 확인 시각'}
+          </dt>
+          <dd>
+            {event.source === 'meta' ? (
+              reviewedTime(event.at, true) + ' (한국시간)'
+            ) : (
+              <>
+                {event.previousActiveAt && (
+                  <span>
+                    집행 중 확인 {reviewedTime(event.previousActiveAt)} ·{' '}
+                  </span>
+                )}
+                {event.lastDeliveryDate && (
+                  <span>
+                    마지막 집행 확인일 {dateLabel(event.lastDeliveryDate)}{' '}
+                    ·{' '}
+                  </span>
+                )}
+                중단 확인 {reviewedTime(event.at)}
+              </>
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 function AdPerformance({
   ad,
   row,
   selectionLabel,
+  liveRange,
+  earlierRange,
+  lifetimeMode,
+  total,
+  zone,
+  currency,
 }: {
-  ad: ReviewedAd
+  ad: DashboardAd
   row?: ReviewedSnapshot
   selectionLabel: string
+  liveRange?: CardRange
+  earlierRange?: CardRange
+  lifetimeMode: boolean
+  total?: MetaLifetimeRow
+  zone: string
+  currency: string | null
 }) {
+  const range = earlierRange ?? liveRange
+  const live = lifetimeMode ? total : range?.byCard.get(ad.id)
+  const thumbnail = ad.thumbnailUrl ? (
+    <img
+      src={`${import.meta.env.BASE_URL}${ad.thumbnailUrl.replace(/^\//, '')}`}
+      alt={`${ad.title} 광고 썸네일`}
+      loading="lazy"
+    />
+  ) : (
+    <span>
+      <Camera aria-hidden="true" />
+      썸네일 준비 중
+    </span>
+  )
   return (
     <Card className="reviewed-ad" aria-label={ad.title}>
       <div className="reviewed-ad-heading">
-        <a
-          className="reviewed-post-thumbnail"
-          href={ad.postUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`${ad.title} 사진 열기`}
-        >
-          {ad.thumbnailUrl ? (
-            <img
-              src={`${import.meta.env.BASE_URL}${ad.thumbnailUrl.replace(/^\//, '')}`}
-              alt={`${ad.title} 광고 썸네일`}
-            />
-          ) : (
-            <span>
-              <Camera aria-hidden="true" />
-              광고 이미지
-            </span>
-          )}
-        </a>
-        <div>
-          <span className="reviewed-ad-eyebrow">INSTAGRAM AD</span>
-          <h3>{ad.title}</h3>
-          <p>{ad.objective}</p>
+        {ad.postUrl ? (
           <a
-            className="reviewed-post-link"
+            className="reviewed-post-thumbnail"
             href={ad.postUrl}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label={`${ad.title} 사진 열기`}
           >
-            Instagram 게시물 보기
-            <ArrowUpRight size={15} aria-hidden="true" />
+            {thumbnail}
           </a>
+        ) : (
+          <figure className="reviewed-post-thumbnail">{thumbnail}</figure>
+        )}
+        <div>
+          {ad.deliveryStatus ? (
+            <span
+              className={`ad-delivery-status ad-status-${ad.deliveryStatus}`}
+            >
+              {statusLabels[ad.deliveryStatus]}
+            </span>
+          ) : (
+            <span className="reviewed-ad-eyebrow">INSTAGRAM AD</span>
+          )}
+          <h3>{ad.title}</h3>
+          {ad.objective && <p>{ad.objective}</p>}
+          {ad.postUrl && (
+            <a
+              className="reviewed-post-link"
+              href={ad.postUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Instagram 게시물 보기
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </a>
+          )}
+          {ad.promotedPostUrl && ad.promotedPostUrl !== ad.postUrl && (
+            <a
+              className="reviewed-post-link"
+              href={ad.promotedPostUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              실제 집행 게시물 보기{' '}
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </a>
+          )}
         </div>
       </div>
+      <DeliveryDates ad={ad} range={liveRange} zone={zone} />
       <div className="reviewed-ad-period">
         <CalendarDays size={14} aria-hidden="true" />
-        {row?.period
-          ? `${dateLabel(row.period.start)} — ${dateLabel(row.period.end)}`
-          : row
-            ? '전체 기간 누적 · 집계 날짜 확인 중'
-            : `${selectionLabel} · 성과 자료 대기`}
+        {lifetimeMode
+          ? total
+            ? `${total.complete ? '전체 누적 성과' : 'Meta 제공 기간'} · ${dateLabel(total.since)} — ${dateLabel(total.until)}`
+            : '전체 누적 성과 · 조회 대기'
+          : earlierRange
+            ? `마지막 저장 실적 · ${rangeLabel(earlierRange)}`
+            : liveRange
+              ? `Instagram 광고 · ${selectionLabel}`
+              : row?.period
+                ? `${dateLabel(row.period.start)} — ${dateLabel(row.period.end)}`
+                : row
+                  ? '전체 기간 누적 · 집계 날짜 확인 중'
+                  : `${selectionLabel} · 성과 자료 대기`}
       </div>
-      {row ? (
+      {lifetimeMode && total?.asOf && (
+        <p className="ad-metric-asof">
+          Meta 조회 {reviewedTime(total.asOf)} (한국시간)
+        </p>
+      )}
+      {live ? (
+        <dl className="reviewed-ad-values">
+          <div>
+            <dt>지출</dt>
+            <dd>{currencyLabel(live.spend, currency)}</dd>
+          </div>
+          <div>
+            <dt>노출</dt>
+            <dd>
+              {live.impressions == null
+                ? '미수집'
+                : valueLabel(live.impressions, '회')}
+            </dd>
+          </div>
+          <div>
+            <dt>도달</dt>
+            <dd>
+              {live.reach == null ? '미수집' : valueLabel(live.reach, '명')}
+            </dd>
+          </div>
+          <div>
+            <dt>링크 클릭</dt>
+            <dd>
+              {live.linkClicks == null
+                ? '미수집'
+                : valueLabel(live.linkClicks, '회')}
+            </dd>
+          </div>
+          {live.spend != null &&
+            live.linkClicks != null &&
+            live.linkClicks > 0 && (
+              <div>
+                <dt>링크 클릭당 비용</dt>
+                <dd>{currencyLabel(live.spend / live.linkClicks, currency)}</dd>
+              </div>
+            )}
+        </dl>
+      ) : liveRange || lifetimeMode ? (
+        <p className="reviewed-ad-empty">
+          {ad.deliveryStatus === 'scheduled'
+            ? '집행 후 첫 실적이 들어오면 표시됩니다.'
+            : lifetimeMode
+              ? '이 광고의 Instagram 누적 실적을 기다리고 있습니다.'
+              : '선택한 기간에 이 광고로 확인된 Meta 실적이 없습니다.'}
+        </p>
+      ) : row ? (
         <>
           <dl className="reviewed-ad-values">
             {detailMetrics
@@ -173,6 +424,8 @@ function AdPerformance({
               ))}
           </dl>
         </>
+      ) : ad.discovered ? (
+        <p className="reviewed-ad-empty">아직 선택한 기간의 실적이 없습니다.</p>
       ) : (
         <div className="reviewed-ad-empty">
           <Target aria-hidden="true" />
@@ -255,11 +508,43 @@ function AdPerformance({
 }
 
 export default function ReviewedDashboard({
-  data,
+  data: reviewed,
+  report,
+  lifetime,
+  lifetimeFailed,
+  failed,
 }: {
-  data: ReviewedPerformanceData
+  data: ReviewedPerformanceData | null
+  report: PublicMetaAdsReport | null
+  lifetime: MetaLifetimeReport | null
+  lifetimeFailed: boolean
+  failed: boolean
 }) {
-  const [selection, setSelection] = useState(() => initialSelection(data))
+  const data = reviewed ?? emptyReviewed
+  const ads = useMemo(
+    () => displayAds(data.ads, report?.cards),
+    [data.ads, report?.cards],
+  )
+  const ranges = useMemo(() => cardRanges(report, ads), [report, ads])
+  const [chosen, setSelection] = useState<string | null>(null)
+  const selection =
+    chosen &&
+    (!chosen.startsWith('meta:') || ranges.some((r) => r.key === chosen))
+      ? chosen
+      : __INSTAGRAM_BACKEND__
+        ? 'lifetime'
+        : 'latest'
+  const liveRange = ranges.find((range) => range.key === selection)
+  const lifetimeMode = selection === 'lifetime'
+  const byId = new Map(
+    (lifetime?.totals ?? []).map((row) => [row.reviewedAdId, row]),
+  )
+  const currency =
+    (lifetimeMode ? lifetime?.currency : null) ?? report?.currency ?? null
+  useEffect(() => {
+    if (window.location.hash === '#campaigns')
+      document.getElementById('campaigns')?.scrollIntoView()
+  }, [])
   const knownRanges = new Map(
     data.snapshots
       .filter(
@@ -283,12 +568,15 @@ export default function ReviewedDashboard({
       (a, b) => b.end.localeCompare(a.end) || b.start.localeCompare(a.start),
     )
   const selectedOption = options.find((w) => w.key === selection)
-  const selectionLabel =
-    selection === 'latest'
+  const selectionLabel = liveRange
+    ? rangeLabel(liveRange)
+    : lifetimeMode
       ? '전체 누적 성과'
-      : selectedOption
-        ? `${dateLabel(selectedOption.start)} — ${dateLabel(selectedOption.end)}`
-        : selection.replace('|', ' — ')
+      : selection === 'latest'
+        ? '저장된 누적 기록'
+        : selectedOption
+          ? `${dateLabel(selectedOption.start)} — ${dateLabel(selectedOption.end)}`
+          : selection.replace('|', ' — ')
   const rows = rowsForSelection(data, selection)
   const summary = summarizeReviewed(rows)
   const before = previousPeriod(selection)
@@ -306,7 +594,25 @@ export default function ReviewedDashboard({
         .map((r) => r.adId)
         .sort()
         .join('|')
-  const reportPreview = resultSummary(data, rows)
+  const reportPreview =
+    liveRange || lifetimeMode
+      ? ads
+          .flatMap((ad) => {
+            const metrics = lifetimeMode
+              ? byId.get(ad.id)
+              : liveRange?.byCard.get(ad.id)
+            if (!metrics) return []
+            const parts = [
+              metrics.linkClicks != null &&
+                `링크 클릭 ${number(metrics.linkClicks)}회`,
+              metrics.spend != null &&
+                `지출 ${currencyLabel(metrics.spend, currency)}`,
+            ].filter(Boolean)
+            return parts.length ? [`${ad.title} · ${parts.join(' · ')}`] : []
+          })
+          .join('\n') ||
+        '선택한 기간의 링크 클릭과 지출은 아직 확인되지 않았습니다.'
+      : resultSummary(data, rows)
   const hasIncomplete = rows.length < data.expectedAdCount
 
   return (
@@ -316,7 +622,7 @@ export default function ReviewedDashboard({
           <CalendarDays aria-hidden="true" />
           <span>
             지난 성과도, 원하는 기간으로.
-            <small>저장된 성과를 기간별로 확인하세요.</small>
+            <small>기간을 선택하면 아래 광고별 실적이 바뀝니다.</small>
           </span>
         </div>
         <label>
@@ -325,12 +631,28 @@ export default function ReviewedDashboard({
             value={selection}
             onChange={(e) => setSelection(e.target.value)}
           >
-            <option value="latest">전체 누적 성과</option>
-            {options.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
+            {__INSTAGRAM_BACKEND__ && (
+              <option value="lifetime">전체 누적 성과</option>
+            )}
+            {ranges.length > 0 && (
+              <optgroup label="Instagram 광고 실적">
+                {ranges.map((range) => (
+                  <option key={range.key} value={range.key}>
+                    {rangeLabel(range)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {(data.snapshots.length > 0 || !report?.cards?.length) && (
+              <optgroup label="저장된 실적">
+                <option value="latest">저장된 누적 기록</option>
+                {options.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
       </section>
@@ -349,9 +671,26 @@ export default function ReviewedDashboard({
           <div className="report-footer">
             <span className="report-state">
               <i />
-              최근 업데이트: {reviewedTime(data.updatedAt)}
+              {lifetimeMode
+                ? 'Meta 누적 조회'
+                : liveRange
+                  ? 'Meta 수집'
+                  : '최근 업데이트'}{' '}
+              {reviewedTime(
+                lifetimeMode
+                  ? (lifetime?.asOf ?? null)
+                  : liveRange
+                    ? (report?.lastSyncedAt ?? null)
+                    : data.updatedAt,
+              )}
             </span>
           </div>
+          {lifetimeMode && (
+            <small className="ad-metric-asof">
+              화면을 열어 둔 동안 1분마다 조회합니다. Meta 집계에 따라 수치
+              반영이 늦어질 수 있습니다.
+            </small>
+          )}
         </div>
       </section>
 
@@ -428,19 +767,53 @@ export default function ReviewedDashboard({
             <h2>광고별 상세 실적</h2>
           </div>
           <span className="reviewed-coverage">
-            게시물 링크 · 확인된 원본 지표
+            {liveRange || lifetimeMode
+              ? selectionLabel
+              : '게시물 링크 · 확인된 원본 지표'}
           </span>
         </div>
+        {(lifetimeMode
+          ? lifetimeFailed || lifetime?.status === 'error'
+          : failed || report?.status === 'error') && (
+          <p role="status">
+            최근 Meta 실적을 갱신하지 못했습니다. 마지막으로 저장된 자료를
+            표시합니다.
+          </p>
+        )}
         <div className="reviewed-ad-grid">
-          {data.ads.map((ad) => (
+          {ads.map((ad) => (
             <AdPerformance
               key={ad.id}
               ad={ad}
               row={rows.find((r) => r.adId === ad.id)}
               selectionLabel={selectionLabel}
+              liveRange={liveRange}
+              lifetimeMode={lifetimeMode}
+              total={byId.get(ad.id)}
+              zone={report?.timeZone ?? 'Asia/Seoul'}
+              earlierRange={
+                liveRange &&
+                (ad.deliveryStatus === 'paused' ||
+                  ad.deliveryStatus === 'archived') &&
+                !liveRange.byCard.has(ad.id)
+                  ? ranges
+                      .filter(
+                        (range) =>
+                          range.until <= liveRange.until &&
+                          range.byCard.has(ad.id),
+                      )
+                      .sort(
+                        (a, b) =>
+                          Number(b.kind === liveRange.kind) -
+                            Number(a.kind === liveRange.kind) ||
+                          b.until.localeCompare(a.until),
+                      )[0]
+                  : undefined
+              }
+              currency={currency}
             />
           ))}
-          {data.ads.length < data.expectedAdCount && (
+          {!report?.cards?.length && data.ads.length < data.expectedAdCount && (
             <Card className="reviewed-ad reviewed-awaiting">
               <Target size={30} aria-hidden="true" />
               <h3>두 번째 광고 자료 대기</h3>

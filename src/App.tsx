@@ -46,12 +46,12 @@ import {
 } from '@/lib/report'
 import * as demo from '@/lib/demo'
 import { InstagramConnectPanel } from '@/components/instagram-connect-panel'
-import { MetaAdsReport } from '@/components/meta-ads-report'
 import {
   useInstagramConnection,
   instagramErrors,
 } from '@/lib/instagram-connection'
 import { useReviewedPerformance } from '@/lib/reviewed-performance'
+import { useCardPerformance } from '@/lib/meta-card-performance'
 import { useVisitorTracker } from '@/lib/visitor-tracker'
 import '@/reviewed-dashboard.css'
 
@@ -142,7 +142,9 @@ export default function App() {
   )
   const instagram = useInstagramConnection()
   const reviewed = useReviewedPerformance()
-  const showReviewed = !sample && Boolean(reviewed.data?.ads.length)
+  const meta = useCardPerformance(!isMedia && !isAdmin && !sample)
+  const showReviewed =
+    !sample && Boolean(reviewed.data?.ads.length || meta.report?.cards?.length)
   const linkedInstagram = instagram.status?.authenticated
     ? instagram.status.connection
     : null
@@ -157,22 +159,29 @@ export default function App() {
         )
         setActive('overview')
       } else if (__INSTAGRAM_BACKEND__ && target === 'ad-report') {
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search + '#campaigns',
+        )
         setSample(false)
-        setActive('overview')
+        setActive('campaigns')
+        document.getElementById('campaigns')?.scrollIntoView()
       } else if (
         ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
       )
         setActive(target)
       else if (!target) setActive('overview')
     }
+    navigate()
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
   useEffect(() => {
     adminClicks.current = { count: 0, lastAt: 0 }
     if (isMedia || isAdmin) window.scrollTo({ top: 0, behavior: 'instant' })
-    else if (window.location.hash === '#ad-report' && !sample)
-      document.getElementById('ad-report')?.scrollIntoView()
+    else if (active === 'campaigns')
+      document.getElementById('campaigns')?.scrollIntoView()
   }, [active, isMedia, isAdmin, sample])
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -458,14 +467,6 @@ export default function App() {
                   </Button>
                 )}
               </section>
-              {__INSTAGRAM_BACKEND__ && !sample && (
-                <section id="ad-report" aria-labelledby="meta-report-title">
-                  <div className="section-heading">
-                    <h2 id="meta-report-title">광고 자동 보고서</h2>
-                  </div>
-                  <MetaAdsReport />
-                </section>
-              )}
             </>
           )}
           {reviewed.error && !sample && !isMedia && !isAdmin && (
@@ -497,7 +498,13 @@ export default function App() {
                 <p role="status">확인된 광고 성과를 불러오는 중입니다.</p>
               }
             >
-              <ReviewedDashboard data={reviewed.data!} />
+              <ReviewedDashboard
+                data={reviewed.data}
+                report={meta.report}
+                failed={meta.failed}
+                lifetime={meta.lifetime}
+                lifetimeFailed={meta.lifetimeFailed}
+              />
             </Suspense>
           ) : (
             <>
@@ -525,7 +532,7 @@ export default function App() {
                       {sample
                         ? '화면 검토용 합성 데이터입니다. 실제 광고 실적이 아닙니다.'
                         : linkedInstagram
-                          ? '광고 자동 보고서에서 광고 계정의 실적을 확인하세요.'
+                          ? '광고별 상세 실적에서 집행 결과를 확인하세요.'
                           : '계정 연결 메뉴에서 프로필을 연결할 수 있습니다.'}
                     </span>
                   </span>
@@ -553,7 +560,7 @@ export default function App() {
                       <p className="report-placeholder">
                         저장된 보고 자료가 없습니다.
                         {__INSTAGRAM_BACKEND__ &&
-                          ' Meta에서 수집한 실적은 광고 자동 보고서에서 확인하세요.'}
+                          ' Meta에서 수집한 실적은 광고별 상세 실적에서 확인하세요.'}
                       </p>
                     </>
                   )}

@@ -212,6 +212,27 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.ad-delivery-status {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: #49534d;
+  background: #edf0ed;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ad-status-active {
+  color: #245438;
+  background: #e6f1e5;
+}
+.ad-status-paused {
+  color: #74511c;
+  background: #f9efd9;
+}
+.reviewed-ads-section {
+  scroll-margin-top: 95px;
+}
 .reviewed-ad-heading p {
   font-size: 11px;
   margin: 4px 0 0;
@@ -526,4 +547,31 @@
   .reviewed-no-sum {
     font-size: 18px;
   }
+}
+.ad-delivery-dates {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.84rem;
+}
+.ad-delivery-dates > div {
+  display: grid;
+  grid-template-columns: minmax(6.5em, auto) 1fr;
+  gap: 0.6rem;
+}
+.ad-delivery-dates dt,
+.ad-metric-asof {
+  color: #53605c;
+}
+.ad-delivery-dates dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ad-stop-record dd {
+  font-weight: 600;
+}
+.ad-metric-asof {
+  display: block;
+  margin: 0.4rem 0;
+  font-size: 0.78rem;
 }

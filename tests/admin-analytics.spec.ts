@@ -155,109 +155,17 @@ async function mockAdmin(
   }
 }
 
-test('첫 화면에서 로그인 없이 수집된 광고 실적을 보고 미수집 지표와 0을 구분한다', async ({
+test('공개 대시보드는 게시된 광고가 없어도 관리자 통계를 요청하지 않는다', async ({
   page,
 }) => {
   const api = await mockAdmin(page)
-  await page.route('**/api/meta-ads', (route) => {
-    expect(route.request().method()).toBe('GET')
-    return route.fulfill({
-      json: {
-        status: 'error',
-        lastSyncedAt: '2026-03-04T01:30:00Z',
-        currency: 'KRW',
-        timeZone: 'Asia/Seoul',
-        periods: [
-          {
-            kind: 'week',
-            since: '2026-03-02',
-            until: '2026-03-04',
-            spend: 1200,
-            linkClicks: null,
-            impressions: 14,
-            reach: 12,
-          },
-          {
-            kind: 'month',
-            since: '2026-03-01',
-            until: '2026-03-04',
-            spend: 2500,
-            linkClicks: 0,
-            impressions: 33,
-            reach: 20,
-          },
-        ],
-        daily: [
-          {
-            date: '2026-03-04',
-            adName: '오늘의 가상 광고',
-            spend: 500,
-            impressions: 7,
-            linkClicks: null,
-          },
-          {
-            date: '2026-03-03',
-            adName: '전날의 가상 광고',
-            spend: 700,
-            impressions: 7,
-            linkClicks: 0,
-          },
-        ],
-      },
-    })
-  })
-  await page.setViewportSize({ width: 320, height: 900 })
   await page.goto('/')
   await expect(
-    page.getByText('최근 광고 수집에 실패했습니다.', { exact: false }),
+    page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
-  await expect(page.getByRole('region', { name: '주간 실적' })).toContainText(
-    '미수집',
-  )
   await expect(
-    page
-      .getByRole('region', { name: '월간 실적' })
-      .getByRole('cell', { name: '0', exact: true }),
-  ).toBeVisible()
-  await expect(page.getByText('오늘의 가상 광고')).toBeVisible()
-  await expect(page.getByLabel('관리자 비밀번호')).toHaveCount(0)
-  await page.getByLabel('조회 날짜').selectOption('2026-03-03')
-  await expect(page.getByText('전날의 가상 광고')).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true)
-  expect(api.reports()).toBe(0)
-})
-
-test('기존 광고 보고서 링크에서도 익명 방문자는 첫 수집 전 상태를 확인한다', async ({
-  page,
-}) => {
-  const api = await mockAdmin(page)
-  await page.route('**/api/meta-ads', (route) =>
-    route.fulfill({
-      json: {
-        status: 'unconfigured',
-        lastSyncedAt: null,
-        currency: null,
-        timeZone: null,
-        periods: [],
-        daily: [],
-      },
-    }),
-  )
-  await page.goto('/#ad-report')
-  await expect(
-    page
-      .locator('#ad-report')
-      .getByRole('heading', { name: '광고 자동 보고서' }),
-  ).toBeVisible()
-  await expect(page.locator('#ad-report')).toContainText(
-    '광고 계정 연결을 기다리고 있습니다.',
-  )
-  await expect(page.getByRole('region', { name: '주간 실적' })).toHaveCount(0)
-  await expect(page.getByRole('region', { name: '월간 실적' })).toHaveCount(0)
+    page.getByRole('heading', { name: '광고 자동 보고서', exact: true }),
+  ).toHaveCount(0)
   await expect(page.getByLabel('관리자 비밀번호')).toHaveCount(0)
   expect(api.reports()).toBe(0)
 })
