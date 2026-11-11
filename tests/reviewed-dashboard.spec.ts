@@ -131,14 +131,13 @@ async function chooseRange(page: Page, mode: '주간' | '월간', label: string)
   const button = periodMode(page, mode)
   await button.click()
   await expect(button).toHaveAttribute('aria-pressed', 'true')
-  const range = page
-    .getByRole('group', {
-      name: mode === '주간' ? '조회할 주' : '조회할 달',
-      exact: true,
-    })
-    .getByRole('button', { name: label, exact: true })
-  await range.click()
-  await expect(range).toHaveAttribute('aria-pressed', 'true')
+  const range = page.getByRole('combobox', {
+    name: mode === '주간' ? '조회할 주' : '조회할 달',
+    exact: true,
+  })
+  await expect(page.locator('.reviewed-dashboard select')).toHaveCount(1)
+  await range.selectOption({ label })
+  await expect(range.locator('option:checked')).toHaveText(label)
 }
 
 const newCatalogAd = {
@@ -314,20 +313,24 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   })
   const lifetime = periodMode(page, '전체 누적')
   await expect(cards).toHaveCount(2)
-  await expect(paused.locator('.ad-delivery-status')).toHaveText('일시중단')
+  await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
+  await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
   await expect(paused).toContainText('첫 집행 확인일')
   await expect(paused).toContainText(/2026\.\s*10\.\s*17/)
   await expect(lifetime).toHaveAttribute('aria-pressed', 'true')
   await expect(active).toContainText('13,541원')
   await expect(paused).toContainText('7,465원')
-  await chooseRange(page, '주간', '주간 · 2026.11.16 — 2026.11.18')
+  await chooseRange(page, '주간', '2026.11.16 – 11.18')
   await expect(active).toContainText('8,432원')
   await expect(paused).toContainText('3,786원')
   await expect(paused).toContainText('마지막 Meta 실적')
+  await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
+  await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
   await expect(paused).toContainText('2026.11.09')
   await expect(paused).toContainText('2026.11.15')
   await expect(paused).not.toContainText('8,432원')
-  await chooseRange(page, '주간', '주간 · 2026.11.09 — 2026.11.15')
+  await chooseRange(page, '주간', '2026.11.09 – 11.15')
+  await expect(paused.getByText('일시중단', { exact: true })).toBeVisible()
   await expect(paused).toContainText('3,786원')
   const observed = paused
     .getByText('중단 확인 (추정 구간)', { exact: true })
@@ -346,12 +349,115 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   await expect(active).not.toContainText('3,786원')
   await lifetime.click()
   await expect(paused).toContainText('7,465원')
-  await expect(paused.locator('.ad-delivery-status')).toHaveText('일시중단')
+  await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
+  await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
+  await expect(page.locator('.reviewed-dashboard select')).toHaveCount(0)
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true)
+})
+
+test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적이 없는 주도 선택할 수 있다', async ({
+  page,
+}) => {
+  const staleStatus = {
+    id: 'status-without-event',
+    title: '기록 없는 합성 중단 광고',
+    status: 'paused',
+    postUrl: null,
+    thumbnailUrl: null,
+    pauseEvents: [],
+  }
+  const resumed = {
+    ...newCatalogAd,
+    id: ad.id,
+    title: ad.title,
+    status: 'active',
+    pauseEvents: [
+      {
+        source: 'observed',
+        at: '2026-11-08T15:30:00Z',
+        previousActiveAt: '2026-11-08T14:55:00Z',
+        lastDeliveryDate: '2026-11-08',
+      },
+    ],
+  }
+  const before = {
+    kind: 'week',
+    reviewedAdId: ad.id,
+    since: '2026-11-02',
+    until: '2026-11-08',
+    spend: 433,
+    impressions: 70,
+    linkClicks: 12,
+    reach: 51,
+  }
+  const after = {
+    ...before,
+    since: '2026-11-16',
+    until: '2026-11-22',
+    spend: 927,
+  }
+  const month = {
+    ...before,
+    kind: 'month',
+    since: '2026-11-01',
+    until: '2026-11-22',
+    spend: 3033,
+  }
+  await mockData(page)
+  await page.route('**/api/meta-ads', (route) =>
+    route.fulfill({
+      json: {
+        status: 'ready',
+        lastSyncedAt: '2026-11-22T02:15:00Z',
+        timeZone: 'Asia/Seoul',
+        currency: 'KRW',
+        cards: [resumed, staleStatus],
+        adPeriods: [before, after, month],
+        periods: [],
+        daily: [],
+      },
+    }),
+  )
+  await page.goto('/')
+  const card = page.locator('#campaigns .reviewed-ad').filter({
+    has: page.getByRole('heading', { name: ad.title, exact: true }),
+  })
+  const noEvent = page.locator('#campaigns .reviewed-ad').filter({
+    has: page.getByRole('heading', { name: staleStatus.title, exact: true }),
+  })
+  const badge = card.getByText('일시중단', { exact: true })
+  await expect(
+    card.getByRole('heading', { name: ad.title, exact: true }),
+  ).toBeVisible()
+  await expect(card.locator('.ad-stop-record')).toHaveCount(0)
+  await chooseRange(page, '주간', '2026.11.02 – 11.08')
+  await expect(card).toContainText('433원')
+  await expect(badge).toHaveCount(0)
+  await expect(card.locator('.ad-stop-record')).toHaveCount(0)
+  await chooseRange(page, '주간', '2026.11.09 – 11.15')
+  await expect(page.getByRole('combobox', { name: '조회할 주' })).toHaveValue(
+    'meta:week:2026-11-09:2026-11-15',
+  )
+  await expect(badge).toBeVisible()
+  await expect(card.locator('.ad-stop-record')).toContainText(
+    '중단 확인 (추정 구간)',
+  )
+  await expect(card.locator('.ad-stop-record')).toContainText('00:30')
+  await expect(card.locator('.ad-stop-record')).toContainText('23:55')
+  await expect(noEvent.getByText('일시중단', { exact: true })).toHaveCount(0)
+  await expect(noEvent.locator('.ad-stop-record')).toHaveCount(0)
+  await chooseRange(page, '주간', '2026.11.16 – 11.22')
+  await expect(card).toContainText('927원')
+  await expect(badge).toHaveCount(0)
+  await expect(card.locator('.ad-stop-record')).toHaveCount(0)
+  await chooseRange(page, '월간', '2026년 11월 · 1–22일')
+  await expect(card).toContainText('3,033원')
+  await expect(badge).toHaveCount(0)
+  await expect(card.locator('.ad-stop-record')).toHaveCount(0)
 })
 
 test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 과거 주간·월간 실적은 기간별로 남는다', async ({
@@ -454,10 +560,10 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
   await expect(
     page.getByRole('button', { name: /일일|2026\.11\.17/ }),
   ).toHaveCount(0)
-  await chooseRange(page, '주간', '주간 · 2026.11.16 — 2026.11.18')
+  await chooseRange(page, '주간', '2026.11.16 – 11.18')
   await expect(first).toContainText('2,345')
   await expect(second).toContainText('4,567')
-  await expect(page.getByRole('button', { name: /2026\.11\.02/ })).toHaveCount(
+  await expect(page.getByRole('option', { name: /2026\.11\.02/ })).toHaveCount(
     0,
   )
   await expect(page.locator('.reviewed-dashboard')).not.toContainText(
@@ -486,7 +592,7 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
     ),
   ).toBe(true)
 
-  await chooseRange(page, '월간', '월간 · 2026.11.01 — 2026.11.18')
+  await chooseRange(page, '월간', '2026년 11월 · 1–18일')
   await expect(first).toContainText('9,786')
   await expect(second).not.toContainText(/9,786|4,567|1,800/)
   await expect(page.getByText(/34,567/)).toHaveCount(0)
@@ -740,7 +846,7 @@ for (const width of [375, 768, 1440]) {
     await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(
       0,
     )
-    await chooseRange(page, '주간', '주간 · 2026.11.09 — 2026.11.15')
+    await chooseRange(page, '주간', '2026.11.09 – 11.15')
     await expect(adValues(page)).toContainText('3,786원')
     expect(
       await page.evaluate(

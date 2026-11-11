@@ -55,8 +55,11 @@
   white-space: nowrap;
 }
 .reviewed-period-control {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
   min-width: 0;
   padding: 16px 20px;
   margin-bottom: 18px;
@@ -84,15 +87,14 @@
   height: 19px;
   color: var(--primary);
 }
-.period-modes,
-.period-ranges {
+.period-modes {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
 .period-modes button,
-.period-ranges button {
+.period-date-picker select {
   min-width: 44px;
   min-height: 44px;
   max-width: 100%;
@@ -114,44 +116,36 @@
   color: var(--primary-foreground);
   font-weight: 700;
 }
-.period-ranges {
-  align-content: flex-start;
-  max-height: 15rem;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  padding: 12px 5px 5px;
-  margin: 0 -5px -5px;
-  border-top: 1px solid var(--border);
-}
-.period-ranges button {
-  padding-inline: 12px;
+.period-date-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted-foreground);
   font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  font-weight: 600;
 }
-.period-ranges button[aria-pressed='true'] {
-  background: var(--secondary);
-  border-color: var(--primary);
-  box-shadow: inset 0 0 0 1px var(--primary);
-  color: var(--primary);
-  font-weight: 700;
+.period-date-picker select {
+  appearance: auto;
+  padding-inline: 10px;
+  font-variant-numeric: tabular-nums;
 }
 @media (hover: hover) {
   .period-modes button:not(:disabled):not([aria-pressed='true']):hover,
-  .period-ranges button:not(:disabled):not([aria-pressed='true']):hover {
+  .period-date-picker select:hover {
     border-color: var(--primary);
     background: var(--muted);
   }
 }
-.period-modes button:disabled,
-.period-ranges button:disabled {
+.period-modes button:disabled {
   color: var(--muted-foreground);
   background: var(--muted);
   border-color: var(--border);
   cursor: not-allowed;
 }
 .period-modes button:focus-visible,
-.period-ranges button:focus-visible {
+.period-date-picker select:focus-visible {
   outline: 3px solid var(--ring);
   outline-offset: 2px;
 }
@@ -479,6 +473,8 @@
     margin-bottom: 6px;
   }
   .reviewed-period-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     padding: 14px;
   }
   .period-controls-row {
@@ -493,8 +489,13 @@
     padding-inline: 3px;
     word-break: keep-all;
   }
-  .period-ranges button {
-    flex: 1 1 9rem;
+  .period-date-picker {
+    display: grid;
+    gap: 4px;
+  }
+  .period-date-picker select {
+    width: 100%;
+    font-size: 1rem;
   }
   .reviewed-notice {
     flex-wrap: wrap;

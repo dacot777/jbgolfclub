@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type {
   MetaAdsMetrics,
   MetaLifetimeReport,
+  MetaPauseEvent,
   PublicMetaAdsReport,
 } from './meta-ads-types'
 
@@ -14,6 +15,18 @@ export interface CardRange {
   since: string
   until: string
   byCard: Map<string, CardMetrics>
+  pausesByCard: Map<string, MetaPauseEvent[]>
+}
+
+function calendarWeek(day: string) {
+  const monday = new Date(day + 'T00:00:00Z')
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  const sunday = new Date(monday)
+  sunday.setUTCDate(sunday.getUTCDate() + 6)
+  return {
+    since: monday.toISOString().slice(0, 10),
+    until: sunday.toISOString().slice(0, 10),
+  }
 }
 
 export function cardRanges(
@@ -27,7 +40,14 @@ export function cardRanges(
     const key = `meta:${kind}:${since}:${until}`
     let entry = ranges.get(key)
     if (!entry) {
-      entry = { key, kind, since, until, byCard: new Map() }
+      entry = {
+        key,
+        kind,
+        since,
+        until,
+        byCard: new Map(),
+        pausesByCard: new Map(),
+      }
       ranges.set(key, entry)
     }
     return entry
@@ -35,6 +55,40 @@ export function cardRanges(
   for (const row of report.adPeriods ?? []) {
     if (ids.has(row.reviewedAdId))
       range(row.kind, row.since, row.until).byCard.set(row.reviewedAdId, row)
+  }
+  const accountDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: report.timeZone ?? 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const syncedDate =
+    report.lastSyncedAt && accountDate.format(new Date(report.lastSyncedAt))
+  for (const ad of report.cards ?? []) {
+    if (!ids.has(ad.id)) continue
+    for (const event of ad.pauseEvents ?? []) {
+      const day = accountDate.format(new Date(event.at))
+      const matching = [...ranges.values()].filter(
+        (r) => r.kind === 'week' && r.since <= day && day <= r.until,
+      )
+      if (!matching.length) {
+        // A pause can occur in a week with no paid delivery. Keep its history selectable.
+        const week = calendarWeek(day)
+        const through = syncedDate && syncedDate >= day ? syncedDate : day
+        matching.push(
+          range(
+            'week',
+            week.since,
+            through < week.until ? through : week.until,
+          ),
+        )
+      }
+      for (const period of matching) {
+        const events = period.pausesByCard.get(ad.id) ?? []
+        events.push(event)
+        period.pausesByCard.set(ad.id, events)
+      }
+    }
   }
   const order = { week: 0, month: 1 }
   return [...ranges.values()].sort(

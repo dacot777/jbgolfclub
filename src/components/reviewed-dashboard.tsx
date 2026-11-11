@@ -7,6 +7,7 @@ import type {
   AdDeliveryStatus,
   MetaAdCard,
   MetaLifetimeReport,
+  MetaPauseEvent,
   MetaLifetimeRow,
   PublicMetaAdsReport,
 } from '@/lib/meta-ads-types'
@@ -22,7 +23,7 @@ const periodModes = [
 ] as const
 type PeriodMode = (typeof periodModes)[number]['id']
 type DashboardAd = Omit<ReviewedAd, 'postUrl' | 'status'> &
-  Pick<MetaAdCard, 'startAt' | 'firstDeliveryDate' | 'pauseEvents'> & {
+  Pick<MetaAdCard, 'startAt' | 'firstDeliveryDate'> & {
     postUrl: string | null
     deliveryStatus?: AdDeliveryStatus
     promotedPostUrl?: string | null
@@ -49,7 +50,6 @@ function displayAds(
       deliveryStatus: match?.status,
       startAt: match?.startAt,
       firstDeliveryDate: match?.firstDeliveryDate,
-      pauseEvents: match?.pauseEvents,
       promotedPostUrl: match?.postUrl,
       thumbnailUrl: ad.thumbnailUrl ?? match?.thumbnailUrl,
     }
@@ -97,7 +97,7 @@ function currencyLabel(value: number | null, currency: string | null) {
       )
     : number(value)
 }
-function rangeButtonText(range: CardRange) {
+function dateOptionText(range: CardRange) {
   const [year, month, day] = range.since.split('-')
   if (range.kind === 'month') {
     return `${year}년 ${Number(month)}월 · ${Number(day)}–${Number(range.until.slice(8))}일`
@@ -109,36 +109,11 @@ function rangeButtonText(range: CardRange) {
 }
 function DeliveryDates({
   ad,
-  range,
-  zone,
+  events,
 }: {
   ad: DashboardAd
-  range?: CardRange
-  zone: string
+  events: MetaPauseEvent[]
 }) {
-  const events = ad.pauseEvents ?? []
-  const asDay = (value: string) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date(value))
-  const selected = range
-    ? events.filter((event) => {
-        const date = asDay(event.at)
-        if (date >= range.since && date <= range.until) return true
-        const lower = event.previousActiveAt
-          ? asDay(event.previousActiveAt)
-          : event.lastDeliveryDate
-        return (
-          event.source === 'observed' &&
-          lower &&
-          lower <= range.until &&
-          date >= range.since
-        )
-      })
-    : events.slice(0, 1)
   return (
     <dl className="ad-delivery-dates">
       <div>
@@ -157,7 +132,7 @@ function DeliveryDates({
           <dd>{dateLabel(ad.firstDeliveryDate)}</dd>
         </div>
       )}
-      {selected.map((event) => (
+      {events.map((event) => (
         <div className="ad-stop-record" key={event.source + event.at}>
           <dt>
             {event.source === 'meta'
@@ -199,7 +174,6 @@ function AdPerformance({
   earlierRange,
   lifetimeMode,
   total,
-  zone,
   currency,
 }: {
   ad: DashboardAd
@@ -208,11 +182,16 @@ function AdPerformance({
   earlierRange?: CardRange
   lifetimeMode: boolean
   total?: MetaLifetimeRow
-  zone: string
   currency: string | null
 }) {
   const range = earlierRange ?? liveRange
   const live = lifetimeMode ? total : range?.byCard.get(ad.id)
+  const pauseEvents = liveRange?.pausesByCard.get(ad.id) ?? []
+  const status = pauseEvents.length
+    ? 'paused'
+    : ad.deliveryStatus === 'paused'
+      ? undefined
+      : ad.deliveryStatus
   const thumbnail = ad.thumbnailUrl ? (
     <img
       src={`${import.meta.env.BASE_URL}${ad.thumbnailUrl.replace(/^\//, '')}`}
@@ -242,11 +221,9 @@ function AdPerformance({
           <figure className="reviewed-post-thumbnail">{thumbnail}</figure>
         )}
         <div>
-          {ad.deliveryStatus ? (
-            <span
-              className={`ad-delivery-status ad-status-${ad.deliveryStatus}`}
-            >
-              {statusLabels[ad.deliveryStatus]}
+          {status ? (
+            <span className={`ad-delivery-status ad-status-${status}`}>
+              {statusLabels[status]}
             </span>
           ) : (
             <span className="reviewed-ad-eyebrow">INSTAGRAM AD</span>
@@ -277,7 +254,7 @@ function AdPerformance({
           )}
         </div>
       </div>
-      <DeliveryDates ad={ad} range={liveRange} zone={zone} />
+      <DeliveryDates ad={ad} events={pauseEvents} />
       <div className="reviewed-ad-period">
         <CalendarDays size={14} aria-hidden="true" />
         {lifetimeMode
@@ -497,23 +474,19 @@ export default function ReviewedDashboard({
           </div>
         </div>
         {liveRange && (
-          <div
-            className="period-ranges"
-            role="group"
-            aria-label={liveRange.kind === 'week' ? '조회할 주' : '조회할 달'}
-          >
-            {available.map((range) => (
-              <button
-                type="button"
-                key={range.key}
-                aria-label={rangeLabel(range)}
-                aria-pressed={range.key === liveRange.key}
-                onClick={() => setRange(range.key)}
-              >
-                {rangeButtonText(range)}
-              </button>
-            ))}
-          </div>
+          <label className="period-date-picker">
+            <span>{liveRange.kind === 'week' ? '조회할 주' : '조회할 달'}</span>
+            <select
+              value={liveRange.key}
+              onChange={(event) => setRange(event.target.value)}
+            >
+              {available.map((range) => (
+                <option key={range.key} value={range.key}>
+                  {dateOptionText(range)}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
       </section>
 
@@ -571,7 +544,6 @@ export default function ReviewedDashboard({
               liveRange={liveRange}
               lifetimeMode={lifetimeMode}
               total={byId.get(ad.id)}
-              zone={report?.timeZone ?? 'Asia/Seoul'}
               earlierRange={
                 liveRange &&
                 (ad.deliveryStatus === 'paused' ||
