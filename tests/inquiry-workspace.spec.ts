@@ -11,6 +11,7 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   let signedIn = initiallySignedIn
   let reads = 0
   let analyticsEvents = 0
+  const deletionRequests: string[] = []
   const records = new Map<string, Inquiry>()
   await page.route('**/api/analytics/event', (route) => {
     analyticsEvents++
@@ -69,16 +70,32 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
       records.set(id, item)
       return route.fulfill({ json: { item } })
     }
-    expect(request.method()).toBe('PUT')
     const id = new URL(request.url()).pathname.split('/').pop()!
     const old = records.get(id)
+    if (request.method() === 'DELETE') {
+      deletionRequests.push(id)
+      expect(Object.keys(payload)).toEqual(['version'])
+      if (old && payload.version !== old.version)
+        return route.fulfill({
+          status: 409,
+          json: { error: { code: 'conflict' } },
+        })
+      records.delete(id)
+      return route.fulfill({ json: { deleted: true } })
+    }
+    expect(request.method()).toBe('PUT')
     expect(old).toBeDefined()
     expect(payload.version).toBe(old!.version)
     const item = { ...payload, id, version: old!.version + 1 } as Inquiry
     records.set(id, item)
     return route.fulfill({ json: { item } })
   })
-  return { records, reads: () => reads, analyticsEvents: () => analyticsEvents }
+  return {
+    records,
+    deletionRequests,
+    reads: () => reads,
+    analyticsEvents: () => analyticsEvents,
+  }
 }
 
 test('관리자 로그인 전에는 문의 기록을 읽지 않고 인증 후에만 목록을 표시한다', async ({
@@ -122,6 +139,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   await page.goto('/#inquiries')
   const camp: InquiryInput = {
     firstDate: '2026-11-10',
+    branch: 'hanam',
     product: 'camp',
     channel: 'kakao',
     source: 'instagram_ad',
@@ -135,6 +153,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   }
   const lesson: InquiryInput = {
     firstDate: '2026-11-11',
+    branch: null,
     product: 'lesson',
     channel: 'phone',
     source: 'search',
@@ -148,6 +167,16 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   }
   for (const input of [camp, lesson]) {
     await page.getByRole('button', { name: '새 문의', exact: true }).click()
+    const branch = page.getByRole('combobox', { name: '지점', exact: true })
+    await expect(branch).toHaveValue('')
+    for (const label of ['하남', '청담', '서현'])
+      await expect(
+        branch.getByRole('option', { name: label, exact: true }),
+      ).toHaveCount(1)
+    if (input.branch) await branch.selectOption(input.branch)
+    await expect(
+      page.getByRole('button', { name: '문의 삭제', exact: true }),
+    ).toHaveCount(0)
     await page
       .getByRole('combobox', { name: '관심 상품', exact: true })
       .selectOption(input.product)
@@ -202,6 +231,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('radio', { name: '김여울 대리님', exact: true }),
   ).toBeChecked()
   await page.getByRole('radio', { name: '김의현 원장님', exact: true }).check()
+  const branch = page.getByRole('combobox', { name: '지점', exact: true })
+  await expect(branch).toHaveValue('hanam')
+  await branch.selectOption('cheongdam')
   await page
     .getByRole('combobox', { name: '진행 상태', exact: true })
     .selectOption('completed')
@@ -209,6 +241,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   await expect.poll(() => api.records.get(saved[0].id)?.version).toBe(2)
   expect(api.records.get(saved[0].id)).toMatchObject({
     ...camp,
+    branch: 'cheongdam',
     assignee: 'kim_uihyeon',
     stage: 'completed',
   })
@@ -221,6 +254,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   const beforeReload = api.reads()
   await page.reload()
   await expect.poll(() => api.reads()).toBeGreaterThan(beforeReload)
+  await expect(
+    page.getByRole('row').filter({ hasText: camp.name }),
+  ).toContainText('청담')
   const adFilter = page.getByLabel('광고 필터', { exact: true })
   await adFilter.selectOption(demoAd.id)
   await expect(page.getByLabel('선택한 조건의 문의 현황')).toContainText(
@@ -289,4 +325,92 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true)
+})
+
+test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목록과 등록률을 갱신한다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, true)
+  const legacy: Inquiry = {
+    id: 'd1b11b4d-28c7-4673-bc79-f25439a345fb',
+    version: 1,
+    firstDate: null,
+    branch: null,
+    product: 'lesson',
+    channel: 'phone',
+    source: 'unknown',
+    adId: null,
+    stage: 'completed',
+    assignee: 'unassigned',
+    name: '삭제 대상 검증',
+    contact: '',
+    note: '',
+    nextAction: '',
+  }
+  const remaining: Inquiry = {
+    ...legacy,
+    id: '6df70d74-ce66-45ab-80f0-cbe276b91c42',
+    branch: 'hanam',
+    stage: 'received',
+    name: '보존 대상 검증',
+  }
+  api.records.set(legacy.id, legacy)
+  api.records.set(remaining.id, remaining)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#inquiries')
+  const total = page.getByLabel('전체 문의 현황')
+  const targetRow = page.getByRole('row').filter({ hasText: legacy.name })
+  await expect(total).toContainText('문의 2건 중 등록 1건')
+  await expect(targetRow).toContainText('미지정')
+  await targetRow
+    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .click()
+  const branch = page.getByRole('combobox', { name: '지점', exact: true })
+  await expect(branch).toHaveValue('')
+  await branch.selectOption('seohyeon')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(targetRow).toContainText('서현')
+  await targetRow
+    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .click()
+  const remove = page.getByRole('button', { name: '문의 삭제', exact: true })
+  const confirmation = page.getByRole('alertdialog', { name: '문의 삭제 확인' })
+  await remove.click()
+  await expect(confirmation).toContainText(legacy.name)
+  await confirmation.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  expect(api.deletionRequests).toHaveLength(0)
+  expect(api.records.size).toBe(2)
+
+  await remove.click()
+  const revised = {
+    ...api.records.get(legacy.id)!,
+    version: 3,
+    branch: 'cheongdam',
+  } as const
+  api.records.set(legacy.id, revised)
+  await confirmation
+    .getByRole('button', { name: '삭제하기', exact: true })
+    .click()
+  await expect(
+    page.getByRole('button', { name: '최신 기록 열기' }),
+  ).toBeVisible()
+  expect(api.records.get(legacy.id)).toEqual(revised)
+  await page.getByRole('button', { name: '최신 기록 열기' }).click()
+  await expect(branch).toHaveValue('cheongdam')
+  await remove.click()
+  await confirmation
+    .getByRole('button', { name: '삭제하기', exact: true })
+    .click()
+  await expect(targetRow).toHaveCount(0)
+  await expect(total).toContainText('문의 1건 중 등록 0건')
+  await expect(total).toContainText('0%')
+  expect(api.deletionRequests).toEqual([legacy.id, legacy.id])
+  expect([...api.records.values()]).toEqual([remaining])
+  await page.reload()
+  await expect(total).toContainText('문의 1건 중 등록 0건')
+  await expect(targetRow).toHaveCount(0)
+  await expect(
+    page.getByRole('row').filter({ hasText: remaining.name }),
+  ).toContainText('하남')
 })

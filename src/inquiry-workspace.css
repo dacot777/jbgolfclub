@@ -8,13 +8,22 @@
   cursor: pointer;
   touch-action: manipulation;
 }
+.iq-delete-confirm button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.iq-delete-confirm button:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
 .iq-workspace button:disabled,
 .iq-dialog button:disabled {
   opacity: 0.58;
   cursor: wait;
 }
 .iq-workspace :focus-visible,
-.iq-dialog :focus-visible {
+.iq-dialog :focus-visible,
+.iq-delete-confirm :focus-visible {
   outline: 3px solid #51815e;
   outline-offset: 3px;
 }
@@ -83,6 +92,8 @@
 .iq-primary,
 .iq-secondary,
 .iq-edit,
+.iq-delete-trigger,
+.iq-delete-final,
 .iq-close {
   display: inline-flex;
   align-items: center;
@@ -420,6 +431,63 @@
 .iq-dialog-footer .iq-primary,
 .iq-dialog-footer .iq-secondary {
   min-width: 76px;
+}
+.iq-delete-trigger {
+  margin-inline-end: auto;
+  background: transparent;
+  color: #933b31;
+  padding-inline: 8px;
+}
+.iq-delete-trigger:hover {
+  background: #faeae6;
+}
+.iq-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgb(20 29 23 / 48%);
+}
+.iq-delete-confirm {
+  position: fixed;
+  z-index: 56;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(390px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid #dce4d9;
+  border-radius: 12px;
+  background: #fff;
+  color: #28382d;
+  box-shadow: 0 12px 44px rgb(16 30 20 / 22%);
+}
+.iq-delete-confirm h2 {
+  font-size: 19px;
+  font-weight: 650;
+}
+.iq-delete-confirm p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.iq-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.iq-delete-actions button {
+  min-width: 78px;
+}
+.iq-delete-final {
+  color: white;
+  background: #92392f;
+}
+.iq-delete-final:hover {
+  background: #742e26;
 }
 @container inquiries (max-width: 790px) {
   .iq-heading {

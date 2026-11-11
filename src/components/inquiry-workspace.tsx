@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Check, ClipboardList, Pencil, Plus, UserRound, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Check,
+  ClipboardList,
+  Pencil,
+  Plus,
+  Trash2,
+  UserRound,
+  X,
+} from 'lucide-react'
+import { AlertDialog } from 'radix-ui'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
   ASSIGNEE_LABELS,
+  BRANCH_LABELS,
   CHANNEL_LABELS,
   INQUIRY_LIMITS,
   PRODUCT_LABELS,
@@ -19,9 +29,15 @@ type Draft = Omit<InquiryInput, 'product' | 'channel'> & {
   product: InquiryInput['product'] | ''
   channel: InquiryInput['channel'] | ''
 }
-type Edit = { id: string; version: number | null; draft: Draft }
+type Edit = {
+  id: string
+  version: number | null
+  draft: Draft
+  savedSummary?: string
+}
 const emptyDraft: Draft = {
   firstDate: null,
+  branch: null,
   product: '',
   channel: '',
   source: 'unknown',
@@ -44,7 +60,16 @@ const options = (labels: Record<string, string>) =>
 
 function editItem(item: Inquiry): Edit {
   const { id, version, ...draft } = item
-  return { id, version, draft }
+  const savedSummary = [
+    item.name,
+    PRODUCT_LABELS[item.product] + ' 문의',
+    CHANNEL_LABELS[item.channel],
+    item.branch && BRANCH_LABELS[item.branch],
+    item.firstDate,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return { id, version, draft, savedSummary }
 }
 
 function isItem(value: unknown): value is Inquiry {
@@ -54,6 +79,7 @@ function isItem(value: unknown): value is Inquiry {
     typeof row.id === 'string' &&
     Number.isSafeInteger(row.version) &&
     (row.firstDate === null || typeof row.firstDate === 'string') &&
+    (row.branch === null || Object.hasOwn(BRANCH_LABELS, String(row.branch))) &&
     (row.adId === null || typeof row.adId === 'string') &&
     ['name', 'contact', 'note', 'nextAction'].every(
       (key) => typeof row[key] === 'string',
@@ -78,6 +104,7 @@ export default function InquiryWorkspace({
   const [listError, setListError] = useState(false)
   const [adError, setAdError] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [problem, setProblem] = useState('')
   const [conflict, setConflict] = useState(false)
@@ -86,6 +113,7 @@ export default function InquiryWorkspace({
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [adFilter, setAdFilter] = useState('')
   const returnFocus = useRef<HTMLElement | null>(null)
+  const newButton = useRef<HTMLButtonElement>(null)
   const session = useRef<AbortController | null>(null)
   const listRequest = useRef(0)
   const writePending = useRef(false)
@@ -202,6 +230,7 @@ export default function InquiryWorkspace({
     setNotice('')
     setProblem('')
     setConflict(false)
+    setConfirmDelete(false)
     setEdit(
       record
         ? editItem(record)
@@ -226,14 +255,15 @@ export default function InquiryWorkspace({
     setProblem('')
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault()
+  async function submitEdit(action: 'save' | 'delete') {
     const current = session.current
+    const deleting = action === 'delete'
     if (
       !current ||
       !edit ||
-      !edit.draft.product ||
-      !edit.draft.channel ||
+      (deleting
+        ? !confirmDelete || edit.version === null
+        : !edit.draft.product || !edit.draft.channel || confirmDelete) ||
       writePending.current ||
       conflict
     )
@@ -249,16 +279,20 @@ export default function InquiryWorkspace({
           : collectionPath + '/' + encodeURIComponent(edit.id),
         {
           ...noStore,
-          method: creating ? 'POST' : 'PUT',
+          method: deleting ? 'DELETE' : creating ? 'POST' : 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
           },
           signal: AbortSignal.any([current.signal, AbortSignal.timeout(15000)]),
-          body: JSON.stringify({
-            ...edit.draft,
-            ...(creating ? { id: edit.id } : { version: edit.version }),
-          }),
+          body: JSON.stringify(
+            deleting
+              ? { version: edit.version }
+              : {
+                  ...edit.draft,
+                  ...(creating ? { id: edit.id } : { version: edit.version }),
+                },
+          ),
         },
       )
       if (current.signal.aborted) return
@@ -267,18 +301,32 @@ export default function InquiryWorkspace({
         return
       }
       if (response.status === 409) {
+        setConfirmDelete(false)
         setConflict(true)
+        return
+      }
+      if (!creating && response.status === 404) {
+        removeFromList(edit.id, '이미 삭제된 문의입니다.')
         return
       }
       if (!response.ok) {
         setProblem(
-          response.status === 400
-            ? '입력 내용을 확인해 주세요. 연결할 광고가 목록에 있는지도 확인해 주세요.'
-            : '저장하지 못했습니다. 입력한 내용으로 다시 시도해 주세요.',
+          deleting
+            ? '삭제하지 못했습니다. 다시 시도해 주세요.'
+            : response.status === 400
+              ? '입력 내용을 확인해 주세요. 연결할 광고가 목록에 있는지도 확인해 주세요.'
+              : '저장하지 못했습니다. 입력한 내용으로 다시 시도해 주세요.',
         )
         return
       }
-      const { item } = await response.json()
+      const result = await response.json()
+      if (current.signal.aborted) return
+      if (deleting) {
+        if (result.deleted !== true) throw new Error('format')
+        removeFromList(edit.id, '문의 기록을 삭제했습니다.')
+        return
+      }
+      const { item } = result
       if (!isItem(item) || item.id !== edit.id) throw new Error('format')
       if (current.signal.aborted) return
       ++listRequest.current
@@ -292,7 +340,9 @@ export default function InquiryWorkspace({
     } catch {
       if (!current.signal.aborted)
         setProblem(
-          '저장 결과를 확인할 수 없습니다. 연결을 확인한 뒤 다시 저장해 주세요.',
+          deleting
+            ? '삭제 결과를 확인할 수 없습니다. 연결을 확인한 뒤 다시 시도해 주세요.'
+            : '저장 결과를 확인할 수 없습니다. 연결을 확인한 뒤 다시 저장해 주세요.',
         )
     } finally {
       if (!current.signal.aborted) {
@@ -300,6 +350,15 @@ export default function InquiryWorkspace({
         setSaving(false)
       }
     }
+  }
+  function removeFromList(id: string, message: string) {
+    ++listRequest.current
+    setItems((records) => records?.filter((row) => row.id !== id) ?? null)
+    setListError(false)
+    setConfirmDelete(false)
+    setEdit(null)
+    returnFocus.current = newButton.current
+    setNotice(message)
   }
   async function reopenLatest() {
     if (!edit || saving) return
@@ -311,6 +370,8 @@ export default function InquiryWorkspace({
       setEdit(editItem(found))
       setConflict(false)
       setProblem('')
+    } else if (latest && edit.version !== null) {
+      removeFromList(edit.id, '이미 삭제된 문의입니다.')
     } else setProblem('최신 기록을 불러오지 못했습니다. 다시 시도해 주세요.')
     setSaving(false)
   }
@@ -357,6 +418,7 @@ export default function InquiryWorkspace({
           <h2 id="iq-list-title">문의 목록</h2>
           {items && (
             <button
+              ref={newButton}
               className="iq-primary"
               type="button"
               onClick={(e) => openEditor(e.currentTarget)}
@@ -427,14 +489,15 @@ export default function InquiryWorkspace({
             {matches.length ? (
               <table className="iq-table">
                 <caption className="sr-only">
-                  관심 상품, 문의 채널, 유입 경로, 진행 상태와 담당자별 문의
-                  기록
+                  관심 상품, 지점, 문의 채널, 유입 경로, 진행 상태와 담당자별
+                  문의 기록
                 </caption>
                 <thead>
                   <tr>
                     {[
                       '문의',
                       '관심 상품',
+                      '지점',
                       '문의 채널',
                       '유입 경로',
                       '진행 상태',
@@ -460,6 +523,10 @@ export default function InquiryWorkspace({
                         <td>
                           <span className="iq-mobile-label">관심 상품</span>
                           {PRODUCT_LABELS[row.product]}
+                        </td>
+                        <td>
+                          <span className="iq-mobile-label">지점</span>
+                          {row.branch ? BRANCH_LABELS[row.branch] : '미지정'}
                         </td>
                         <td>
                           <span className="iq-mobile-label">문의 채널</span>
@@ -557,7 +624,14 @@ export default function InquiryWorkspace({
                 <X size={19} aria-hidden="true" />
               </button>
             </header>
-            <form className="iq-form" onSubmit={save} autoComplete="off">
+            <form
+              className="iq-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submitEdit('save')
+              }}
+              autoComplete="off"
+            >
               <div className="iq-form-scroll">
                 <fieldset className="iq-assignees" disabled={saving}>
                   <legend>인계 담당자</legend>
@@ -601,6 +675,22 @@ export default function InquiryWorkspace({
                     >
                       <option value="">상품 선택</option>
                       {options(PRODUCT_LABELS)}
+                    </select>
+                  </label>
+                  <label>
+                    지점
+                    <select
+                      aria-label="지점"
+                      value={edit.draft.branch ?? ''}
+                      onChange={(e) =>
+                        change(
+                          'branch',
+                          (e.target.value || null) as Draft['branch'],
+                        )
+                      }
+                    >
+                      <option value="">미지정</option>
+                      {options(BRANCH_LABELS)}
                     </select>
                   </label>
                   <label>
@@ -731,12 +821,72 @@ export default function InquiryWorkspace({
                     </button>
                   </div>
                 )}
-                {problem && (
+                {problem && !confirmDelete && (
                   <p role="alert" className="iq-feedback">
                     {problem}
                   </p>
                 )}
                 <div>
+                  {edit.version !== null && (
+                    <AlertDialog.Root
+                      open={confirmDelete}
+                      onOpenChange={(open) => {
+                        if (writePending.current) return
+                        setProblem('')
+                        setConfirmDelete(open)
+                      }}
+                    >
+                      <AlertDialog.Trigger asChild>
+                        <button
+                          type="button"
+                          className="iq-delete-trigger"
+                          disabled={saving || conflict}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                          문의 삭제
+                        </button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Portal>
+                        <AlertDialog.Overlay className="iq-delete-overlay" />
+                        <AlertDialog.Content
+                          className="iq-delete-confirm"
+                          onEscapeKeyDown={(event) => {
+                            if (writePending.current) event.preventDefault()
+                          }}
+                        >
+                          <AlertDialog.Title>문의 삭제 확인</AlertDialog.Title>
+                          <AlertDialog.Description>
+                            <strong>{edit.savedSummary}</strong>
+                            <br />이 문의를 삭제하면 복구할 수 없습니다.
+                          </AlertDialog.Description>
+                          {problem && (
+                            <p role="alert" className="iq-feedback">
+                              {problem}
+                            </p>
+                          )}
+                          <div className="iq-delete-actions">
+                            <AlertDialog.Cancel asChild>
+                              <button
+                                className="iq-secondary"
+                                type="button"
+                                disabled={saving}
+                              >
+                                취소
+                              </button>
+                            </AlertDialog.Cancel>
+                            <button
+                              className="iq-delete-final"
+                              type="button"
+                              disabled={saving}
+                              onClick={() => void submitEdit('delete')}
+                            >
+                              {saving ? '삭제 중…' : '삭제하기'}
+                            </button>
+                          </div>
+                        </AlertDialog.Content>
+                      </AlertDialog.Portal>
+                    </AlertDialog.Root>
+                  )}
                   <button
                     className="iq-secondary"
                     type="button"

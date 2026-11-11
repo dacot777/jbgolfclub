@@ -2,6 +2,7 @@ import type { Env } from './types'
 import { readMetaAds } from './meta-ads'
 import {
   createInquiry,
+  deleteInquiry,
   listInquiries,
   updateInquiry,
   InquiryError,
@@ -543,6 +544,10 @@ export async function adminAnalytics(
       })
     }
     const inquiryPath = /^\/api\/admin\/inquiries\/([^/]+)$/.exec(path)
+    if (inquiryPath && request.method === 'DELETE') {
+      await requireAdminMutation(request, env)
+      return json(await deleteInquiry(env, inquiryPath[1], await body(request)))
+    }
     if (inquiryPath && request.method === 'PUT') {
       await requireAdminMutation(request, env)
       return json({

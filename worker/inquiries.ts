@@ -2,6 +2,7 @@ import type { Env } from './types'
 import { decryptToken, encryptToken } from './crypto'
 import {
   ASSIGNEE_LABELS,
+  BRANCH_LABELS,
   CHANNEL_LABELS,
   INQUIRY_LIMITS,
   PRODUCT_LABELS,
@@ -16,7 +17,7 @@ type InquiryRow = Omit<Inquiry, keyof PrivateFields> & {
   privateFields: string | null
   creationFingerprint: string | null
 }
-const columns = `id,version,first_date AS firstDate,product,channel,source,ad_id AS adId,stage,assignee,
+const columns = `id,version,first_date AS firstDate,product,channel,source,ad_id AS adId,stage,assignee,branch,
   private_fields AS privateFields,creation_fingerprint AS creationFingerprint`
 const emptyFields: PrivateFields = {
   name: '',
@@ -40,6 +41,11 @@ function invalid(): never {
 function idFrom(value: unknown) {
   return typeof value === 'string' && uuid.test(value)
     ? value.toLowerCase()
+    : invalid()
+}
+function versionFrom(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+    ? value
     : invalid()
 }
 function option<T extends Record<string, string>>(
@@ -89,6 +95,7 @@ function inputFrom(raw: Record<string, unknown>): InquiryInput {
     contact: textField(raw.contact, INQUIRY_LIMITS.contact),
     note: textField(raw.note, INQUIRY_LIMITS.note),
     nextAction: textField(raw.nextAction, INQUIRY_LIMITS.nextAction),
+    branch: raw.branch == null ? null : option(raw.branch, BRANCH_LABELS),
   }
 }
 async function itemFrom(row: InquiryRow, env: Env): Promise<Inquiry> {
@@ -148,8 +155,13 @@ export async function createInquiry(
   const id = idFrom(raw.id)
   const input = inputFrom(raw)
   // A keyed fingerprint permits a delayed retry after an edit without storing or exposing the original personal fields.
+  const { branch, ...legacyFields } = input
+  // Keep existing fingerprints valid for retries of creates without an assigned branch.
   const fingerprint = await fingerprintFor(
-    'inquiry-create:' + id + ':' + JSON.stringify(input),
+    'inquiry-create:' +
+      id +
+      ':' +
+      JSON.stringify(branch === null ? legacyFields : input),
   )
   const existing = () =>
     env.DB.prepare(`SELECT ${columns} FROM inquiries WHERE id=?`)
@@ -159,8 +171,9 @@ export async function createInquiry(
   if (!row) {
     await confirmAd(env, input.adId)
     row = await env.DB.prepare(
-      `INSERT INTO inquiries(id,created_at,first_date,product,channel,source,ad_id,stage,assignee,private_fields,creation_fingerprint)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING ${columns}`,
+      `INSERT INTO inquiries(id,created_at,first_date,product,channel,source,ad_id,stage,assignee,private_fields,creation_fingerprint,branch)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM deleted_inquiry_ids WHERE id=?)
+      ON CONFLICT(id) DO NOTHING RETURNING ${columns}`,
     )
       .bind(
         id,
@@ -174,6 +187,8 @@ export async function createInquiry(
         input.assignee,
         await privateFields(env, id, input),
         fingerprint,
+        branch,
+        id,
       )
       .first<InquiryRow>()
     if (!row) row = await existing()
@@ -189,21 +204,20 @@ export async function updateInquiry(
   raw: Record<string, unknown>,
 ) {
   const id = idFrom(idValue)
-  if (!Number.isSafeInteger(raw.version) || Number(raw.version) < 1)
-    return invalid()
+  const version = versionFrom(raw.version)
   const input = inputFrom(raw)
   const original = await env.DB.prepare(
-    'SELECT version,ad_id AS adId FROM inquiries WHERE id=?',
+    'SELECT version,ad_id AS adId,branch FROM inquiries WHERE id=?',
   )
     .bind(id)
-    .first<{ version: number; adId: string | null }>()
+    .first<Pick<Inquiry, 'version' | 'adId' | 'branch'>>()
   if (!original) throw new InquiryError('inquiry_not_found', 404)
-  if (original.version !== raw.version)
+  if (original.version !== version)
     throw new InquiryError('inquiry_conflict', 409)
   if (original.adId !== input.adId) await confirmAd(env, input.adId)
   const row = await env.DB.prepare(
     `UPDATE inquiries SET first_date=?,product=?,channel=?,source=?,ad_id=?,stage=?,assignee=?,
-      private_fields=?,version=version+1 WHERE id=? AND version=? RETURNING ${columns}`,
+      private_fields=?,branch=?,version=version+1 WHERE id=? AND version=? RETURNING ${columns}`,
   )
     .bind(
       input.firstDate,
@@ -214,10 +228,33 @@ export async function updateInquiry(
       input.stage,
       input.assignee,
       await privateFields(env, id, input),
+      raw.branch === undefined ? original.branch : input.branch,
       id,
       original.version,
     )
     .first<InquiryRow>()
   if (!row) throw new InquiryError('inquiry_conflict', 409)
   return itemFrom(row, env)
+}
+
+export async function deleteInquiry(
+  env: Env,
+  idValue: string,
+  raw: Record<string, unknown>,
+) {
+  const id = idFrom(idValue)
+  const version = versionFrom(raw.version)
+  // Mark and erase in a single D1 transaction. A stale delete must do neither.
+  const [, , remaining] = await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO deleted_inquiry_ids(id) SELECT id FROM inquiries WHERE id=? AND version=?',
+    ).bind(id, version),
+    env.DB.prepare('DELETE FROM inquiries WHERE id=? AND version=?').bind(
+      id,
+      version,
+    ),
+    env.DB.prepare('SELECT version FROM inquiries WHERE id=?').bind(id),
+  ])
+  if (remaining.results.length) throw new InquiryError('inquiry_conflict', 409)
+  return { deleted: true }
 }

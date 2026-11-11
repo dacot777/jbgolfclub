@@ -3,6 +3,11 @@ export const PRODUCT_LABELS = {
   lesson: '레슨',
   other: '기타',
 } as const
+export const BRANCH_LABELS = {
+  hanam: '하남',
+  cheongdam: '청담',
+  seohyeon: '서현',
+} as const
 export const CHANNEL_LABELS = {
   kakao: '카카오채널',
   instagram_dm: '인스타그램 DM',
@@ -38,6 +43,7 @@ export const INQUIRY_LIMITS = {
 export interface InquiryInput {
   firstDate: string | null
   product: keyof typeof PRODUCT_LABELS
+  branch: keyof typeof BRANCH_LABELS | null
   channel: keyof typeof CHANNEL_LABELS
   source: keyof typeof SOURCE_LABELS
   adId: string | null
