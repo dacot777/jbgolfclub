@@ -161,6 +161,13 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
   const dates = [...new Set(report.daily.map((row) => row.date))]
     .sort()
     .reverse()
+  const periods = report.periods.filter(
+    (row) =>
+      row.spend !== null ||
+      row.impressions !== null ||
+      row.linkClicks !== null ||
+      row.reach !== null,
+  )
   const day = dates.includes(selectedDate) ? selectedDate : dates[0]
   const spendFormat = report.currency
     ? new Intl.NumberFormat('ko-KR', {
@@ -209,23 +216,13 @@ export function MetaAdsReport({ onExpired }: { onExpired: () => void }) {
           {report.timeZone && <> · 집계 시간대 {report.timeZone}</>}
         </p>
       )}
-      {report.status === 'ready' &&
-        !report.periods.length &&
-        !report.daily.length && (
-          <p className="admin-private-note">
-            조회한 기간에 Meta에서 반환한 Instagram 광고 실적이 없습니다.
-          </p>
-        )}
-      <PeriodReport
-        kind="week"
-        periods={report.periods}
-        spendLabel={spendLabel}
-      />
-      <PeriodReport
-        kind="month"
-        periods={report.periods}
-        spendLabel={spendLabel}
-      />
+      {report.status === 'ready' && !periods.length && !report.daily.length && (
+        <p className="admin-private-note">
+          조회한 기간에 Meta에서 반환한 Instagram 광고 실적이 없습니다.
+        </p>
+      )}
+      <PeriodReport kind="week" periods={periods} spendLabel={spendLabel} />
+      <PeriodReport kind="month" periods={periods} spendLabel={spendLabel} />
       {dates.length > 0 && (
         <Card className="meta-report-section">
           <div className="admin-toolbar">
