@@ -1,11 +1,17 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import type { Inquiry, InquiryInput } from '../src/lib/inquiry-types'
 
-test.use({ baseURL: 'http://127.0.0.1:5174' })
+test.use({ baseURL: 'http://127.0.0.1:5174', hasTouch: true })
 
 const demoAd = { id: 'synthetic-published-card', title: '검증 캠프 광고' }
 const sessionToken = 'synthetic-inquiry-session-csrf'
 const testPassword = 'synthetic-inquiry-login'
+
+async function expectTotal(summary: Locator, count: number) {
+  await expect(summary).toHaveText(
+    new RegExp('^총 문의\\s*' + count + '\\s*건$'),
+  )
+}
 
 async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   let signedIn = initiallySignedIn
@@ -126,8 +132,7 @@ test('관리자 로그인 전에는 문의 기록을 읽지 않고 인증 후에
   ).toBeVisible()
   expect(api.reads()).toBeGreaterThan(0)
   const summary = page.getByLabel('전체 문의 현황')
-  await expect(summary).toContainText('문의 0건 중 등록 0건')
-  await expect(summary).toContainText('—')
+  await expectTotal(summary, 0)
   expect(api.analyticsEvents()).toBe(0)
 })
 
@@ -167,13 +172,13 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   }
   for (const input of [camp, lesson]) {
     await page.getByRole('button', { name: '새 문의', exact: true }).click()
-    const branch = page.getByRole('combobox', { name: '지점', exact: true })
-    await expect(branch).toHaveValue('')
+    const branch = page.getByRole('group', { name: '지점', exact: true })
+    await expect(branch.getByRole('radio', { name: '미지정' })).toBeChecked()
     for (const label of ['하남', '청담', '서현'])
       await expect(
-        branch.getByRole('option', { name: label, exact: true }),
-      ).toHaveCount(1)
-    if (input.branch) await branch.selectOption(input.branch)
+        branch.getByRole('radio', { name: label, exact: true }),
+      ).toBeVisible()
+    if (input.branch) await branch.getByRole('radio', { name: '하남' }).check()
     await expect(
       page.getByRole('button', { name: '문의 삭제', exact: true }),
     ).toHaveCount(0)
@@ -231,9 +236,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('radio', { name: '김여울 대리님', exact: true }),
   ).toBeChecked()
   await page.getByRole('radio', { name: '김의현 원장님', exact: true }).check()
-  const branch = page.getByRole('combobox', { name: '지점', exact: true })
-  await expect(branch).toHaveValue('hanam')
-  await branch.selectOption('cheongdam')
+  const branch = page.getByRole('group', { name: '지점', exact: true })
+  await expect(branch.getByRole('radio', { name: '하남' })).toBeChecked()
+  await branch.getByRole('radio', { name: '청담' }).check()
   await page
     .getByRole('combobox', { name: '진행 상태', exact: true })
     .selectOption('completed')
@@ -246,10 +251,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     stage: 'completed',
   })
   expect(api.records.get(saved[1].id)).toMatchObject({ ...lesson, version: 1 })
-  await expect(page.getByLabel('전체 문의 현황')).toContainText(
-    '문의 2건 중 등록 1건',
-  )
-  await expect(page.getByLabel('전체 문의 현황')).toContainText('50%')
+  await expectTotal(page.getByLabel('전체 문의 현황'), 2)
 
   const beforeReload = api.reads()
   await page.reload()
@@ -259,9 +261,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   ).toContainText('청담')
   const adFilter = page.getByLabel('광고 필터', { exact: true })
   await adFilter.selectOption(demoAd.id)
-  await expect(page.getByLabel('선택한 조건의 문의 현황')).toContainText(
-    '문의 1건 중 등록 1건',
-  )
+  await expectTotal(page.getByLabel('선택한 조건의 문의 현황'), 1)
   await expect(
     page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
   ).toHaveCount(0)
@@ -276,8 +276,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
   ).toHaveCount(0)
   const filteredSummary = page.getByLabel('선택한 조건의 문의 현황')
-  await expect(filteredSummary).toContainText('문의 1건 중 등록 1건')
-  await expect(filteredSummary).toContainText('100%')
+  await expectTotal(filteredSummary, 1)
   await page
     .getByLabel('담당자 필터', { exact: true })
     .selectOption('unassigned')
@@ -288,7 +287,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   await expect(
     page.getByRole('button', { name: camp.name + ' 수정', exact: true }),
   ).toHaveCount(0)
-  await expect(filteredSummary).toContainText('문의 1건 중 등록 0건')
+  await expectTotal(filteredSummary, 1)
   await page
     .getByRole('button', { name: lesson.name + ' 수정', exact: true })
     .click()
@@ -327,7 +326,35 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   ).toBe(true)
 })
 
-test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목록과 등록률을 갱신한다', async ({
+test('새 문의는 바깥 클릭으로 저장 없이 닫히고 다시 열면 입력값이 초기화된다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, true)
+  await page.setViewportSize({ width: 375, height: 850 })
+  await page.goto('/#inquiries')
+  const opener = page.getByRole('button', { name: '새 문의', exact: true })
+  const editor = page.getByRole('dialog', { name: '새 문의 기록' })
+  await opener.click()
+  await editor.getByRole('radio', { name: '청담' }).check()
+  const alias = editor.getByLabel('이름 또는 별칭', { exact: true })
+  await alias.fill('미저장 검증')
+  await page.mouse.click(2, 2)
+  await expect(editor).toHaveCount(0)
+  await expect(opener).toBeFocused()
+  await expectTotal(page.getByLabel('전체 문의 현황'), 0)
+  expect(api.records.size).toBe(0)
+
+  await opener.click()
+  await expect(alias).toBeEmpty()
+  await expect(editor.getByRole('radio', { name: '미지정' })).toBeChecked()
+  await page.keyboard.press('Escape')
+  await expect(editor).toHaveCount(0)
+  await opener.click()
+  await editor.getByRole('button', { name: '닫기' }).click()
+  await expect(editor).toHaveCount(0)
+})
+
+test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제해 총 건수를 갱신한다', async ({
   page,
 }) => {
   const api = await mockWorkspace(page, true)
@@ -360,16 +387,24 @@ test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목
   await page.goto('/#inquiries')
   const total = page.getByLabel('전체 문의 현황')
   const targetRow = page.getByRole('row').filter({ hasText: legacy.name })
-  await expect(total).toContainText('문의 2건 중 등록 1건')
+  await expectTotal(total, 2)
   await expect(targetRow).toContainText('미지정')
   await targetRow
     .getByRole('button', { name: legacy.name + ' 수정', exact: true })
     .click()
-  const branch = page.getByRole('combobox', { name: '지점', exact: true })
-  await expect(branch).toHaveValue('')
-  await branch.selectOption('seohyeon')
+  const branch = page.getByRole('group', { name: '지점', exact: true })
+  await expect(branch.getByRole('radio', { name: '미지정' })).toBeChecked()
+  await branch.getByRole('radio', { name: '서현' }).check()
   await page.getByRole('button', { name: '저장', exact: true }).click()
   await expect(targetRow).toContainText('서현')
+  await targetRow
+    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .click()
+  await expect(branch.getByRole('radio', { name: '서현' })).toBeChecked()
+  await branch.getByRole('radio', { name: '미지정' }).check()
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(targetRow).toContainText('미지정')
+  expect(api.records.get(legacy.id)?.branch).toBeNull()
   await targetRow
     .getByRole('button', { name: legacy.name + ' 수정', exact: true })
     .click()
@@ -377,6 +412,11 @@ test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목
   const confirmation = page.getByRole('alertdialog', { name: '문의 삭제 확인' })
   await remove.click()
   await expect(confirmation).toContainText(legacy.name)
+  await page.touchscreen.tap(2, 2)
+  await expect(confirmation).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '문의 수정' })).toBeVisible()
+  expect(api.deletionRequests).toHaveLength(0)
+  await remove.click()
   await confirmation.getByRole('button', { name: '취소', exact: true }).click()
   await expect(confirmation).toHaveCount(0)
   expect(api.deletionRequests).toHaveLength(0)
@@ -385,7 +425,7 @@ test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목
   await remove.click()
   const revised = {
     ...api.records.get(legacy.id)!,
-    version: 3,
+    version: api.records.get(legacy.id)!.version + 1,
     branch: 'cheongdam',
   } as const
   api.records.set(legacy.id, revised)
@@ -397,18 +437,17 @@ test('기존 문의의 지점을 지정하고 확인한 한 건만 삭제해 목
   ).toBeVisible()
   expect(api.records.get(legacy.id)).toEqual(revised)
   await page.getByRole('button', { name: '최신 기록 열기' }).click()
-  await expect(branch).toHaveValue('cheongdam')
+  await expect(branch.getByRole('radio', { name: '청담' })).toBeChecked()
   await remove.click()
   await confirmation
     .getByRole('button', { name: '삭제하기', exact: true })
     .click()
   await expect(targetRow).toHaveCount(0)
-  await expect(total).toContainText('문의 1건 중 등록 0건')
-  await expect(total).toContainText('0%')
+  await expectTotal(total, 1)
   expect(api.deletionRequests).toEqual([legacy.id, legacy.id])
   expect([...api.records.values()]).toEqual([remaining])
   await page.reload()
-  await expect(total).toContainText('문의 1건 중 등록 0건')
+  await expectTotal(total, 1)
   await expect(targetRow).toHaveCount(0)
   await expect(
     page.getByRole('row').filter({ hasText: remaining.name }),

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
   ClipboardList,
+  MapPin,
   Pencil,
   Plus,
   Trash2,
@@ -50,6 +51,7 @@ const emptyDraft: Draft = {
   nextAction: '',
 }
 const collectionPath = '/api/admin/inquiries'
+const branchChoices = { '': '미지정', ...BRANCH_LABELS }
 const noStore = { credentials: 'same-origin', cache: 'no-store' } as const
 const options = (labels: Record<string, string>) =>
   Object.entries(labels).map(([value, label]) => (
@@ -57,6 +59,51 @@ const options = (labels: Record<string, string>) =>
       {label}
     </option>
   ))
+
+function InquiryChoices<T extends string>({
+  legend,
+  name,
+  choices,
+  value,
+  disabled,
+  icon: Icon,
+  onChange,
+}: {
+  legend: string
+  name: string
+  choices: Record<T, string>
+  value: T
+  disabled: boolean
+  icon: typeof UserRound
+  onChange: (key: T) => void
+}) {
+  return (
+    <fieldset className="iq-choices" disabled={disabled}>
+      <legend>{legend}</legend>
+      <div>
+        {(Object.keys(choices) as T[]).map((key) => (
+          <label key={key}>
+            <input
+              type="radio"
+              name={name}
+              value={key}
+              checked={value === key}
+              onChange={() => onChange(key)}
+            />
+            <span>
+              {value === key ? (
+                <Check size={16} aria-hidden="true" />
+              ) : (
+                <Icon size={16} aria-hidden="true" />
+              )}
+              {choices[key]}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
 
 function editItem(item: Inquiry): Edit {
   const { id, version, ...draft } = item
@@ -217,7 +264,6 @@ export default function InquiryWorkspace({
       (!adFilter ||
         (adFilter === 'unlinked' ? !row.adId : row.adId === adFilter)),
   )
-  const completed = matches.filter((row) => row.stage === 'completed').length
   const hasFilters = !!(productFilter || assigneeFilter || adFilter)
   const adNames = new Map(ads.map((ad) => [ad.id, ad.title]))
   const linkedOptions = new Map(adNames)
@@ -383,34 +429,11 @@ export default function InquiryWorkspace({
           className="iq-stats"
           aria-label={hasFilters ? '선택한 조건의 문의 현황' : '전체 문의 현황'}
         >
-          <div>
-            <dt>총 문의</dt>
-            <dd>
-              {matches.length.toLocaleString('ko-KR')}
-              <small>건</small>
-            </dd>
-          </div>
-          <div>
-            <dt>신청·등록 완료</dt>
-            <dd>
-              {completed.toLocaleString('ko-KR')}
-              <small>건</small>
-            </dd>
-          </div>
-          <div>
-            <dt>문의 → 등록률</dt>
-            <dd>
-              {matches.length
-                ? new Intl.NumberFormat('ko-KR', {
-                    maximumFractionDigits: 1,
-                  }).format((completed * 100) / matches.length)
-                : '—'}
-              {matches.length > 0 && <small>%</small>}
-            </dd>
-            <span>
-              문의 {matches.length}건 중 등록 {completed}건
-            </span>
-          </div>
+          <dt>총 문의</dt>
+          <dd>
+            {matches.length.toLocaleString('ko-KR')}
+            <small>건</small>
+          </dd>
         </dl>
       )}
       <section className="iq-panel" aria-labelledby="iq-list-title">
@@ -597,14 +620,13 @@ export default function InquiryWorkspace({
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open && !saving) setEdit(null)
+            if (!open && !saving && !confirmDelete) setEdit(null)
           }}
         >
           <DialogContent
             className="iq-dialog"
             showCloseButton={false}
             aria-describedby={undefined}
-            onPointerDownOutside={(e) => e.preventDefault()}
             onCloseAutoFocus={(e) => {
               e.preventDefault()
               returnFocus.current?.focus()
@@ -633,32 +655,24 @@ export default function InquiryWorkspace({
               autoComplete="off"
             >
               <div className="iq-form-scroll">
-                <fieldset className="iq-assignees" disabled={saving}>
-                  <legend>인계 담당자</legend>
-                  <div>
-                    {Object.entries(ASSIGNEE_LABELS).map(([k, v]) => (
-                      <label key={k}>
-                        <input
-                          type="radio"
-                          name="iq-assignee"
-                          value={k}
-                          checked={edit.draft.assignee === k}
-                          onChange={() =>
-                            change('assignee', k as Draft['assignee'])
-                          }
-                        />
-                        <span>
-                          {edit.draft.assignee === k ? (
-                            <Check aria-hidden="true" size={16} />
-                          ) : (
-                            <UserRound aria-hidden="true" size={16} />
-                          )}{' '}
-                          {v}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
+                <InquiryChoices
+                  legend="인계 담당자"
+                  name="iq-assignee"
+                  choices={ASSIGNEE_LABELS}
+                  value={edit.draft.assignee}
+                  disabled={saving}
+                  icon={UserRound}
+                  onChange={(value) => change('assignee', value)}
+                />
+                <InquiryChoices
+                  legend="지점"
+                  name="iq-branch"
+                  choices={branchChoices}
+                  value={edit.draft.branch ?? ''}
+                  disabled={saving}
+                  icon={MapPin}
+                  onChange={(value) => change('branch', value || null)}
+                />
                 <fieldset
                   className="iq-fields"
                   disabled={saving}
@@ -675,22 +689,6 @@ export default function InquiryWorkspace({
                     >
                       <option value="">상품 선택</option>
                       {options(PRODUCT_LABELS)}
-                    </select>
-                  </label>
-                  <label>
-                    지점
-                    <select
-                      aria-label="지점"
-                      value={edit.draft.branch ?? ''}
-                      onChange={(e) =>
-                        change(
-                          'branch',
-                          (e.target.value || null) as Draft['branch'],
-                        )
-                      }
-                    >
-                      <option value="">미지정</option>
-                      {options(BRANCH_LABELS)}
                     </select>
                   </label>
                   <label>
@@ -847,7 +845,14 @@ export default function InquiryWorkspace({
                         </button>
                       </AlertDialog.Trigger>
                       <AlertDialog.Portal>
-                        <AlertDialog.Overlay className="iq-delete-overlay" />
+                        <AlertDialog.Overlay
+                          className="iq-delete-overlay"
+                          onClick={() => {
+                            if (writePending.current) return
+                            setProblem('')
+                            setConfirmDelete(false)
+                          }}
+                        />
                         <AlertDialog.Content
                           className="iq-delete-confirm"
                           onEscapeKeyDown={(event) => {

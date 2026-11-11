@@ -130,6 +130,8 @@ export default function App() {
   const [descending, setDescending] = useState(true)
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
+  const messageBox = useRef<HTMLDivElement>(null)
+  const dialogOpener = useRef<HTMLElement | null>(null)
   const [active, setActive] = useState(() =>
     workspaceRoutes.includes(window.location.hash.slice(1))
       ? window.location.hash.slice(1)
@@ -156,6 +158,18 @@ export default function App() {
   const linkedInstagram = instagram.status?.authenticated
     ? instagram.status.connection
     : null
+  useEffect(() => {
+    if (!message) return
+    function dismissMessage(event: MouseEvent) {
+      if (
+        event.target instanceof Node &&
+        !messageBox.current?.contains(event.target)
+      )
+        setMessage('')
+    }
+    document.addEventListener('click', dismissMessage, true)
+    return () => document.removeEventListener('click', dismissMessage, true)
+  }, [message])
   useEffect(() => {
     const navigate = () => {
       const target = window.location.hash.slice(1)
@@ -1126,6 +1140,7 @@ export default function App() {
         </main>
       </div>
       <div
+        ref={messageBox}
         role="status"
         aria-live="polite"
         className={message ? 'toast' : 'sr-only'}
@@ -1141,7 +1156,21 @@ export default function App() {
         open={dialog !== null}
         onOpenChange={(open) => !open && setDialog(null)}
       >
-        <DialogContent className="connection-dialog">
+        <DialogContent
+          className="connection-dialog"
+          onOpenAutoFocus={() => {
+            dialogOpener.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null
+          }}
+          onCloseAutoFocus={(event) => {
+            if (dialogOpener.current?.isConnected) {
+              event.preventDefault()
+              dialogOpener.current.focus({ preventScroll: true })
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {dialog === 'period'

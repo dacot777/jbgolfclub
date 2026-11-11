@@ -28,20 +28,10 @@
   outline-offset: 3px;
 }
 .iq-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
-  padding: 0;
-  margin: 0 0 18px;
-  border: 1px solid #dce4d9;
-  border-radius: 12px;
-  background: white;
-}
-.iq-stats > div {
-  padding: 20px 22px;
-  min-width: 0;
-}
-.iq-stats > div + div {
-  border-inline-start: 1px solid #e5eae3;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 16px;
 }
 .iq-stats dt {
   font-size: 13px;
@@ -52,7 +42,7 @@
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin: 7px 0 0;
+  margin: 0;
   font-weight: 650;
   font-size: clamp(25px, 3vw, 34px);
   line-height: 1.15;
@@ -62,12 +52,6 @@
 .iq-stats dd small {
   font-size: 14px;
   font-weight: 600;
-}
-.iq-stats > div > span {
-  display: block;
-  color: #55645b;
-  margin-top: 4px;
-  font-size: 12px;
 }
 .iq-panel {
   background: #fff;
@@ -342,30 +326,33 @@
   overscroll-behavior: contain;
   padding: 18px 23px 20px;
 }
-.iq-assignees,
+.iq-choices,
 .iq-fields {
   border: 0;
   padding: 0;
   margin: 0;
   min-width: 0;
 }
-.iq-assignees legend {
+.iq-choices + .iq-choices {
+  margin-top: 16px;
+}
+.iq-choices legend {
   font-weight: 650;
   font-size: 14px;
   padding: 0;
   margin-bottom: 7px;
 }
-.iq-assignees > div {
+.iq-choices > div {
   display: flex;
   gap: 8px;
 }
-.iq-assignees label {
+.iq-choices label {
   flex: 1;
   position: relative;
   min-width: 0;
   cursor: pointer;
 }
-.iq-assignees input {
+.iq-choices input {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -375,7 +362,7 @@
   opacity: 0;
   cursor: pointer;
 }
-.iq-assignees span {
+.iq-choices span {
   min-height: 46px;
   padding: 6px 5px;
   display: flex;
@@ -391,13 +378,13 @@
   text-align: center;
   word-break: keep-all;
 }
-.iq-assignees input:checked + span {
+.iq-choices input:checked + span {
   border-color: #3e6a47;
   background: #edf5e9;
   color: #234b34;
   box-shadow: inset 0 0 0 1px #3e6a47;
 }
-.iq-assignees input:focus-visible + span {
+.iq-choices input:focus-visible + span {
   outline: 3px solid #51815e;
   outline-offset: 3px;
 }
@@ -557,22 +544,10 @@
 }
 @container inquiries (max-width: 510px) {
   .iq-stats {
-    grid-template-columns: 1fr 1fr 1.12fr;
     margin-bottom: 12px;
-  }
-  .iq-stats > div {
-    padding: 13px 9px;
-  }
-  .iq-stats dt {
-    font-size: 11px;
-    word-break: keep-all;
   }
   .iq-stats dd {
     font-size: 24px;
-    margin-top: 4px;
-  }
-  .iq-stats > div > span {
-    font-size: 10px;
   }
   .iq-filters {
     grid-template-columns: 1fr 1fr;
@@ -587,7 +562,7 @@
 }
 @media (max-width: 540px) {
   .iq-dialog[data-slot='dialog-content'] {
-    max-height: calc(100dvh - 16px);
+    max-height: calc(100dvh - min(88px, 16dvh));
     width: calc(100vw - 16px);
   }
   .iq-dialog-header {
@@ -602,10 +577,7 @@
   .iq-fields {
     gap: 12px 8px;
   }
-  .iq-assignees > div {
-    gap: 5px;
-  }
-  .iq-assignees span {
+  .iq-choices span {
     font-size: 12px;
     gap: 3px;
   }
