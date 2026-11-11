@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Clock3,
@@ -18,6 +18,8 @@ import {
   type AnalyticsVisit,
 } from '@/lib/analytics-types'
 import '@/admin-analytics.css'
+
+const InquiryWorkspace = lazy(() => import('./inquiry-workspace'))
 
 function timestamp(value: string | null) {
   if (!value || !Number.isFinite(Date.parse(value))) return '확인되지 않음'
@@ -172,7 +174,11 @@ function VisitRecord({ visit }: { visit: AnalyticsVisit }) {
   )
 }
 
-export default function AdminAnalytics() {
+export default function AdminAnalytics({
+  inquiries = false,
+}: {
+  inquiries?: boolean
+}) {
   const [session, setSession] = useState<AdminSession | null>(null)
   const [checking, setChecking] = useState(true)
   const [password, setPassword] = useState('')
@@ -185,6 +191,11 @@ export default function AdminAnalytics() {
   const [refresh, setRefresh] = useState(0)
   const lastRequest = useRef(0)
   const errorRef = useRef<HTMLDivElement>(null)
+  const expireSession = useCallback(() => {
+    setReport(null)
+    setSession({ configured: true, authenticated: false })
+    setError('인증이 만료되었습니다. 다시 로그인해 주세요.')
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -216,7 +227,7 @@ export default function AdminAnalytics() {
     if (error) errorRef.current?.focus()
   }, [error])
   useEffect(() => {
-    if (!session?.authenticated) return
+    if (!session?.authenticated || inquiries) return
     let active = true
     setLoading(true)
     setError('')
@@ -233,14 +244,7 @@ export default function AdminAnalytics() {
           },
         )
         if (response.status === 401) {
-          if (active) {
-            setReport(null)
-            setSession((previous) => ({
-              configured: previous?.configured ?? true,
-              authenticated: false,
-            }))
-            setError('인증이 만료되었습니다. 다시 로그인해 주세요.')
-          }
+          if (active) expireSession()
           return
         }
         if (!response.ok) throw new Error('report_unavailable')
@@ -259,9 +263,9 @@ export default function AdminAnalytics() {
     return () => {
       active = false
     }
-  }, [session?.authenticated, days, page, refresh])
+  }, [session?.authenticated, days, page, refresh, inquiries, expireSession])
   useEffect(() => {
-    if (!session?.authenticated) return
+    if (!session?.authenticated || inquiries) return
     const update = () => {
       if (
         document.visibilityState === 'visible' &&
@@ -275,7 +279,7 @@ export default function AdminAnalytics() {
       window.removeEventListener('focus', update)
       document.removeEventListener('visibilitychange', update)
     }
-  }, [session?.authenticated])
+  }, [session?.authenticated, inquiries])
 
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -364,7 +368,11 @@ export default function AdminAnalytics() {
           />
           <p className="eyebrow">PRIVATE WORKSPACE</p>
           <h1>관리자 로그인</h1>
-          <p>방문 기록은 관리자 인증 후에만 확인할 수 있습니다.</p>
+          <p>
+            {inquiries
+              ? '문의와 인계 담당자를 확인하려면 로그인하세요.'
+              : '방문 기록은 관리자 인증 후에만 확인할 수 있습니다.'}
+          </p>
           {errorNotice}
           {session && !session.configured && (
             <p className="admin-unconfigured" role="status">
@@ -399,11 +407,13 @@ export default function AdminAnalytics() {
       <div>
         <p className="eyebrow">PRIVATE WORKSPACE</p>
         <h1>
-          방문 기록
+          {inquiries ? '문의·상담 현황' : '방문 기록'}
           <span>.</span>
         </h1>
         <p className="page-description">
-          사이트 접속과 메뉴별 활동을 관리자만 확인합니다.
+          {inquiries
+            ? '문의가 들어온 채널과 유입 경로, 인계 담당자를 기록합니다.'
+            : '사이트 접속과 메뉴별 활동을 관리자만 확인합니다.'}
         </p>
       </div>
       <div className="admin-actions">
@@ -418,6 +428,19 @@ export default function AdminAnalytics() {
       </div>
     </section>
   )
+  if (inquiries)
+    return (
+      <div className="admin-analytics">
+        {heading}
+        {errorNotice}
+        <Suspense fallback={<p role="status">문의 목록을 여는 중입니다.</p>}>
+          <InquiryWorkspace
+            csrfToken={session.csrfToken!}
+            onUnauthorized={expireSession}
+          />
+        </Suspense>
+      </div>
+    )
   return (
     <div className="admin-analytics">
       {heading}

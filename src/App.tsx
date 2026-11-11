@@ -13,6 +13,7 @@ import {
   Eye,
   Camera,
   LayoutDashboard,
+  MessagesSquare,
   Link2,
   MousePointer2,
   Newspaper,
@@ -59,6 +60,14 @@ const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
 const MediaWorkspace = lazy(() => import('@/components/media-workspace'))
 const AdminAnalytics = lazy(() => import('@/components/admin-analytics'))
 const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
+const workspaceRoutes = [
+  'overview',
+  'campaigns',
+  'news',
+  'blog',
+  'admin',
+  ...(__INSTAGRAM_BACKEND__ ? ['inquiries'] : []),
+]
 
 const WeeklyChart = lazy(() =>
   import('@/components/performance-charts').then((m) => ({
@@ -122,14 +131,13 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
   const [active, setActive] = useState(() =>
-    ['news', 'blog', 'campaigns', 'admin'].includes(
-      window.location.hash.slice(1),
-    )
+    workspaceRoutes.includes(window.location.hash.slice(1))
       ? window.location.hash.slice(1)
       : 'overview',
   )
   const isMedia = active === 'news' || active === 'blog'
-  const isAdmin = active === 'admin'
+  const isInquiries = active === 'inquiries'
+  const isAdmin = active === 'admin' || isInquiries
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isAdmin
@@ -167,10 +175,7 @@ export default function App() {
         setSample(false)
         setActive('campaigns')
         document.getElementById('campaigns')?.scrollIntoView()
-      } else if (
-        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
-      )
-        setActive(target)
+      } else if (workspaceRoutes.includes(target)) setActive(target)
       else if (!target) setActive('overview')
     }
     navigate()
@@ -347,6 +352,9 @@ export default function App() {
           {[
             { id: 'overview', name: '성과 대시보드', icon: LayoutDashboard },
             { id: 'campaigns', name: '광고 상세', icon: Target },
+            ...(__INSTAGRAM_BACKEND__
+              ? [{ id: 'inquiries', name: '문의·상담', icon: MessagesSquare }]
+              : []),
             { id: 'news', name: '기사', icon: Newspaper },
             { id: 'blog', name: '블로그', icon: NotebookText },
           ].map((item) => (
@@ -402,13 +410,15 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {isAdmin
-                ? '관리자'
-                : active === 'news'
-                  ? '기사'
-                  : active === 'blog'
-                    ? '블로그'
-                    : '성과 대시보드'}
+              {isInquiries
+                ? '문의·상담 현황'
+                : isAdmin
+                  ? '관리자'
+                  : active === 'news'
+                    ? '기사'
+                    : active === 'blog'
+                      ? '블로그'
+                      : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
@@ -481,7 +491,7 @@ export default function App() {
             <Suspense
               fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
             >
-              <AdminAnalytics />
+              <AdminAnalytics key={active} inquiries={isInquiries} />
             </Suspense>
           ) : isMedia ? (
             <Suspense

@@ -44,7 +44,7 @@ const migration = await readFile(
   'utf8',
 )
 
-async function fixture(overrides = {}) {
+async function fixture(overrides = {}, extraMigrations = []) {
   const mf = new Miniflare({
     modules: true,
     script: bundle.outputFiles[0].text,
@@ -60,7 +60,15 @@ async function fixture(overrides = {}) {
   const db = await mf.getD1Database('DB')
   try {
     await db.batch(
-      migration
+      [
+        migration,
+        ...(await Promise.all(
+          extraMigrations.map((name) =>
+            readFile('worker/migrations/' + name + '.sql', 'utf8'),
+          ),
+        )),
+      ]
+        .join('\n')
         .split(';')
         .map((statement) => statement.trim())
         .filter(Boolean)
@@ -117,6 +125,191 @@ const event = (overrides = {}) => ({
 const cookieFrom = (response) =>
   response.headers.get('Set-Cookie')?.split(';')[0]
 const value = (db, sql) => db.prepare(sql).first()
+
+async function inquiriesFixture() {
+  return fixture(
+    {
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+      META_AD_ACCOUNT_ID: '1234',
+    },
+    [
+      '0002_reviewed_performance',
+      '0005_meta_ads',
+      '0006_meta_ad_registry',
+      '0008_inquiries',
+    ],
+  )
+}
+const newInquiry = () => ({
+  id: randomUUID(),
+  firstDate: null,
+  product: 'camp',
+  channel: 'kakao',
+  source: 'unknown',
+  adId: null,
+  stage: 'received',
+  assignee: 'unassigned',
+  name: '',
+  contact: '',
+  note: '',
+  nextAction: '',
+})
+const inquiries = '/api/admin/inquiries'
+
+test('private inquiry writes require the admin session, CSRF and correct origin and reject invalid dates and ad attribution', async () => {
+  const f = await inquiriesFixture()
+  try {
+    const input = newInquiry()
+    assert.equal((await f.send(inquiries)).status, 401)
+    assert.equal((await f.send(inquiries, { body: input })).status, 401)
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const write = (body) => f.send(inquiries, { cookie, headers, body })
+    assert.equal((await f.send(inquiries, { cookie, body: input })).status, 403)
+    assert.equal(
+      (
+        await f.send(inquiries, {
+          cookie,
+          headers: { ...headers, Origin: 'https://foreign.invalid' },
+          body: input,
+        })
+      ).status,
+      403,
+    )
+    for (const override of [
+      { id: 'bad' },
+      { firstDate: '2026-02-29' },
+      { product: 'bad' },
+      { source: 'search', adId: 'test-ad' },
+      { note: 'a'.repeat(1501) },
+      { source: 'instagram_ad', adId: 'unregistered' },
+    ])
+      assert.equal((await write({ ...input, ...override })).status, 400)
+    assert.equal(
+      (await write({ ...input, note: 'x'.repeat(16385) })).status,
+      400,
+    )
+    await f.db
+      .prepare("INSERT INTO reviewed_ads(id,data) VALUES ('test-ad','{}')")
+      .run()
+    const added = await write({
+      ...input,
+      source: 'instagram_ad',
+      adId: 'test-ad',
+      firstDate: '2024-02-29',
+    })
+    assert.equal(added.status, 200)
+    assert.equal((await added.json()).item.adId, 'test-ad')
+    const list = await f.send(inquiries, { cookie })
+    assert.match(list.headers.get('Cache-Control'), /no-store/)
+    assert.equal((await list.json()).items.length, 1)
+    assert.equal(
+      (
+        await f.send(inquiries + '/' + input.id, {
+          cookie,
+          headers,
+          method: 'DELETE',
+        })
+      ).status,
+      404,
+    )
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('inquiry fields are encrypted, POST retries preserve subsequent edits, and optimistic updates prevent lost changes', async () => {
+  const f = await inquiriesFixture()
+  try {
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const input = {
+      ...newInquiry(),
+      name: 'synthetic-name',
+      contact: 'synthetic-contact',
+      note: 'synthetic-note',
+      nextAction: 'synthetic-action',
+    }
+    const create = (body = input) =>
+      f.send(inquiries, { cookie, headers, body })
+    const pair = await Promise.all([create(), create()])
+    for (const res of pair)
+      assert.deepEqual((await res.json()).item, { ...input, version: 1 })
+    const stored = await f.db
+      .prepare('SELECT * FROM inquiries WHERE id=?')
+      .bind(input.id)
+      .first()
+    for (const text of [
+      input.name,
+      input.contact,
+      input.note,
+      input.nextAction,
+    ])
+      assert.equal(JSON.stringify(stored).includes(text), false)
+    assert.match(stored.private_fields, /^v1\./)
+    const update = (data) =>
+      f.send(inquiries + '/' + input.id, {
+        cookie,
+        headers,
+        method: 'PUT',
+        body: { ...input, version: 1, ...data },
+      })
+    const results = await Promise.all([
+      update({ stage: 'consulting' }),
+      update({ assignee: 'kim_yeoul' }),
+    ])
+    assert.deepEqual(results.map((result) => result.status).sort(), [200, 409])
+    const updated = (
+      await results.find((result) => result.status === 200).json()
+    ).item
+    assert.equal(updated.version, 2)
+    assert.deepEqual((await (await create()).json()).item, updated)
+    assert.equal(
+      (await create({ ...input, contact: 'other-synthetic' })).status,
+      409,
+    )
+    assert.equal((await update({ stage: 'closed' })).status, 409)
+    const seed = randomUUID()
+    await f.db
+      .prepare(
+        'INSERT INTO inquiries(id,created_at,product,channel) VALUES (?,?,?,?)',
+      )
+      .bind(seed, Date.now() + 1, 'lesson', 'phone')
+      .run()
+    const items = (await (await f.send(inquiries, { cookie })).json()).items
+    assert.deepEqual(
+      items.map((item) => item.id),
+      [seed, input.id],
+    )
+    assert.deepEqual(items[0], {
+      ...newInquiry(),
+      id: seed,
+      version: 1,
+      product: 'lesson',
+      channel: 'phone',
+    })
+    assert.deepEqual(items[1], updated)
+    assert.equal(
+      (
+        await f.send(inquiries + '/' + randomUUID(), {
+          cookie,
+          headers,
+          method: 'PUT',
+          body: { ...input, version: 1 },
+        })
+      ).status,
+      404,
+    )
+    // Ciphertext copied to another row must not be accepted as that inquiry's private fields.
+    await f.db
+      .prepare('UPDATE inquiries SET private_fields=? WHERE id=?')
+      .bind(stored.private_fields, seed)
+      .run()
+    assert.equal((await f.send(inquiries, { cookie })).status, 503)
+  } finally {
+    await f.mf.dispose()
+  }
+})
 
 test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아웃·만료를 검증한다', async () => {
   const f = await fixture()
