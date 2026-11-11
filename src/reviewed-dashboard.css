@@ -55,55 +55,105 @@
   white-space: nowrap;
 }
 .reviewed-period-control {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
-  padding: 19px 22px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 20px;
   margin-bottom: 18px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 11px;
 }
-.reviewed-period-control > div {
+.period-controls-row {
   display: flex;
-  gap: 13px;
   align-items: center;
-  margin-right: auto;
-  font-weight: 600;
+  flex-wrap: wrap;
+  gap: 12px 24px;
 }
-.reviewed-period-control > div > svg {
-  color: var(--primary);
-  width: 22px;
-}
-.reviewed-period-control small {
-  display: block;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--muted-foreground);
-  margin-top: 4px;
-}
-.reviewed-period-control label {
-  display: grid;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-}
-.reviewed-period-control input,
-.reviewed-period-control select {
-  min-height: 44px;
-  padding: 9px 11px;
-  border: 1px solid #c4d0bf;
-  border-radius: 6px;
-  font: inherit;
-  font-size: 13px;
+.period-controls-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
   color: var(--foreground);
-  background: #fff;
-  max-width: 100%;
+  font-size: 1rem;
+  font-weight: 650;
 }
-.reviewed-period-control select {
-  min-width: 260px;
+.period-controls-title svg {
+  width: 19px;
+  height: 19px;
+  color: var(--primary);
+}
+.period-modes,
+.period-ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.period-modes button,
+.period-ranges button {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 15px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid #a4b5a8;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.period-modes button[aria-pressed='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 700;
+}
+.period-ranges {
+  align-content: flex-start;
+  max-height: 15rem;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 12px 5px 5px;
+  margin: 0 -5px -5px;
+  border-top: 1px solid var(--border);
+}
+.period-ranges button {
+  padding-inline: 12px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.period-ranges button[aria-pressed='true'] {
+  background: var(--secondary);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+}
+@media (hover: hover) {
+  .period-modes button:not(:disabled):not([aria-pressed='true']):hover,
+  .period-ranges button:not(:disabled):not([aria-pressed='true']):hover {
+    border-color: var(--primary);
+    background: var(--muted);
+  }
+}
+.period-modes button:disabled,
+.period-ranges button:disabled {
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.period-modes button:focus-visible,
+.period-ranges button:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
 }
 .reviewed-notice {
   display: flex;
@@ -382,62 +432,6 @@
   font-size: 11px;
   color: #74836c;
 }
-.reviewed-history {
-  margin-top: 34px;
-}
-.reviewed-history-card {
-  position: relative;
-  min-width: 0;
-  padding: 0;
-  gap: 0;
-  overflow: hidden;
-  border-color: var(--border);
-}
-.reviewed-history-card .table-scroll {
-  position: relative;
-  min-width: 0;
-  max-width: 100%;
-}
-.reviewed-history-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.reviewed-history-table th {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  padding: 13px 18px;
-  background: #f2f5ed;
-  font-weight: 500;
-}
-.reviewed-history-table td {
-  padding: 15px 18px;
-  font-size: 12px;
-  border-top: 1px solid var(--border);
-}
-.reviewed-history-table td:first-child > strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-}
-.reviewed-history-table td:first-child > span {
-  display: block;
-  font-size: 10px;
-  color: var(--muted-foreground);
-  margin-top: 4px;
-}
-.reviewed-history-table tr.selected td {
-  background: #edf3e5;
-}
-.reviewed-history-card > p {
-  color: var(--muted-foreground);
-  padding: 13px 18px;
-  border-top: 1px solid var(--border);
-  margin: 0;
-  font-size: 11px;
-}
 .reviewed-method {
   display: flex;
   gap: 10px;
@@ -466,12 +460,6 @@
   color: #715120;
 }
 @media (max-width: 1150px) {
-  .reviewed-period-control > div {
-    width: 100%;
-  }
-  .reviewed-period-control > label {
-    flex: 1;
-  }
   .reviewed-ad-grid {
     grid-template-columns: 1fr;
   }
@@ -491,16 +479,22 @@
     margin-bottom: 6px;
   }
   .reviewed-period-control {
-    padding: 17px;
-    gap: 14px;
+    padding: 14px;
   }
-  .reviewed-period-control > label {
-    flex-basis: 100%;
-    min-width: 0;
+  .period-controls-row {
+    display: grid;
+    gap: 10px;
   }
-  .reviewed-period-control select {
-    min-width: 0;
-    width: 100%;
+  .period-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .period-modes button {
+    padding-inline: 3px;
+    word-break: keep-all;
+  }
+  .period-ranges button {
+    flex: 1 1 9rem;
   }
   .reviewed-notice {
     flex-wrap: wrap;
@@ -539,10 +533,6 @@
   }
   .reviewed-ad-values dd {
     font-size: 21px;
-  }
-  .reviewed-history-table th,
-  .reviewed-history-table td {
-    padding-inline: 14px;
   }
   .reviewed-no-sum {
     font-size: 18px;

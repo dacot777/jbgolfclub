@@ -9,8 +9,6 @@ import {
 
 test.use({ baseURL: 'http://127.0.0.1:5174' })
 
-const firstWeek = '2026-11-01|2026-11-07'
-const secondWeek = '2026-11-08|2026-11-14'
 const ad: ReviewedAd = {
   id: 'synthetic-post-a',
   title: '검증용 입상 사진 광고',
@@ -121,6 +119,26 @@ function adValues(page: Page, title = ad.title) {
       has: page.getByRole('heading', { name: title, exact: true }),
     })
     .locator('.reviewed-ad-values')
+}
+
+function periodMode(page: Page, name: '전체 누적' | '주간' | '월간') {
+  return page
+    .getByRole('group', { name: '조회 기간', exact: true })
+    .getByRole('button', { name, exact: true })
+}
+
+async function chooseRange(page: Page, mode: '주간' | '월간', label: string) {
+  const button = periodMode(page, mode)
+  await button.click()
+  await expect(button).toHaveAttribute('aria-pressed', 'true')
+  const range = page
+    .getByRole('group', {
+      name: mode === '주간' ? '조회할 주' : '조회할 달',
+      exact: true,
+    })
+    .getByRole('button', { name: label, exact: true })
+  await range.click()
+  await expect(range).toHaveAttribute('aria-pressed', 'true')
 }
 
 const newCatalogAd = {
@@ -294,21 +312,22 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   const active = cards.filter({
     has: page.getByRole('heading', { name: newCatalogAd.title, exact: true }),
   })
-  const period = page.getByRole('combobox', { name: /^조회 기간/ })
+  const lifetime = periodMode(page, '전체 누적')
   await expect(cards).toHaveCount(2)
   await expect(paused.locator('.ad-delivery-status')).toHaveText('일시중단')
   await expect(paused).toContainText('첫 집행 확인일')
   await expect(paused).toContainText(/2026\.\s*10\.\s*17/)
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
+  await expect(lifetime).toHaveAttribute('aria-pressed', 'true')
   await expect(active).toContainText('13,541원')
   await expect(paused).toContainText('7,465원')
-  await period.selectOption({ label: '주간 · 2026.11.16 — 2026.11.18' })
+  await chooseRange(page, '주간', '주간 · 2026.11.16 — 2026.11.18')
   await expect(active).toContainText('8,432원')
   await expect(paused).toContainText('3,786원')
+  await expect(paused).toContainText('마지막 Meta 실적')
   await expect(paused).toContainText('2026.11.09')
   await expect(paused).toContainText('2026.11.15')
   await expect(paused).not.toContainText('8,432원')
-  await period.selectOption({ label: '주간 · 2026.11.09 — 2026.11.15' })
+  await chooseRange(page, '주간', '주간 · 2026.11.09 — 2026.11.15')
   await expect(paused).toContainText('3,786원')
   const observed = paused
     .getByText('중단 확인 (추정 구간)', { exact: true })
@@ -325,7 +344,7 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   await expect(recorded).toContainText(/2026\.\s*11\.\s*12/)
   await expect(recorded).toContainText('15:30')
   await expect(active).not.toContainText('3,786원')
-  await period.selectOption({ label: '전체 누적 성과' })
+  await lifetime.click()
   await expect(paused).toContainText('7,465원')
   await expect(paused.locator('.ad-delivery-status')).toHaveText('일시중단')
   expect(
@@ -351,6 +370,18 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
       id: 'second-lifetime',
       adId: secondAd.id,
       metrics: metrics({ spend: 1800 }),
+    }),
+    snapshot({
+      id: 'old-manual-week',
+      scope: 'selected_period',
+      period: { start: '2026-11-16', end: '2026-11-18' },
+      metrics: metrics({ spend: 13997 }),
+      commentary: '이전 캡처 수기 코멘트',
+    }),
+    snapshot({
+      id: 'unmatched-manual-week',
+      scope: 'selected_period',
+      period: { start: '2026-11-02', end: '2026-11-08' },
     }),
   ])
   value.ads.push(secondAd)
@@ -407,8 +438,9 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
     })
   const first = card(ad.title)
   const second = card(secondAd.title)
-  const period = page.getByRole('combobox', { name: /^조회 기간/ })
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
+  const lifetime = periodMode(page, '전체 누적')
+  await expect(lifetime).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.reviewed-dashboard select')).toHaveCount(0)
   await expect(first).toContainText('15,403원')
   await expect(second).toContainText('8,854원')
   await expect(second).toContainText('Meta 제공 기간')
@@ -420,13 +452,16 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
   await expect(first).toContainText('16,208원')
   await expect(second).toContainText('8,854원')
   await expect(
-    period.locator('option').filter({ hasText: /일일|2026\.11\.17/ }),
+    page.getByRole('button', { name: /일일|2026\.11\.17/ }),
   ).toHaveCount(0)
-  await period.selectOption({ label: '주간 · 2026.11.16 — 2026.11.18' })
+  await chooseRange(page, '주간', '주간 · 2026.11.16 — 2026.11.18')
   await expect(first).toContainText('2,345')
   await expect(second).toContainText('4,567')
-  await expect(period.locator('option:checked')).toContainText(
-    /2026\.11\.16.*2026\.11\.18/,
+  await expect(page.getByRole('button', { name: /2026\.11\.02/ })).toHaveCount(
+    0,
+  )
+  await expect(page.locator('.reviewed-dashboard')).not.toContainText(
+    /13,997원|이전 캡처 수기 코멘트/,
   )
   await expect(first).not.toContainText('4,567')
   await expect(second).not.toContainText('2,345')
@@ -451,11 +486,11 @@ test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 �
     ),
   ).toBe(true)
 
-  await period.selectOption({ label: '월간 · 2026.11.01 — 2026.11.18' })
+  await chooseRange(page, '월간', '월간 · 2026.11.01 — 2026.11.18')
   await expect(first).toContainText('9,786')
   await expect(second).not.toContainText(/9,786|4,567|1,800/)
   await expect(page.getByText(/34,567/)).toHaveCount(0)
-  await period.selectOption({ label: '전체 누적 성과' })
+  await lifetime.click()
   await expect(first).toContainText('16,208원')
   await expect(second).toContainText('8,854원')
   await expect(first).not.toContainText(/2,345|9,786/)
@@ -503,108 +538,71 @@ test('기존 광고 보고서 링크는 로그인 없이 기존 광고별 상세
   ).toBeInViewport()
 })
 
-test('전달된 누적 수치를 원문 지표와 게시물 링크로 기존 성과 대시보드에 표시한다', async ({
+test('Meta 실적이 없어도 기존 게시물 사진과 링크를 유지하고 수기 실적은 숨긴다', async ({
   page,
 }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await mockData(page)
+  const archivedComment = '이전 검토 기록에만 있던 가상 코멘트'
+  await mockData(
+    page,
+    data([
+      snapshot(),
+      snapshot({
+        id: 'archived-week',
+        period: { start: '2026-11-01', end: '2026-11-07' },
+        scope: 'selected_period',
+        metrics: metrics({ spend: 2351 }),
+        commentary: archivedComment,
+      }),
+    ]),
+  )
   await page.goto('/')
   await expect(
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
-  await expect(page.locator('.reviewed-dashboard')).toBeVisible()
+  await expect(periodMode(page, '전체 누적')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(periodMode(page, '주간')).toBeDisabled()
+  await expect(periodMode(page, '월간')).toBeDisabled()
+  const dash = page.locator('.reviewed-dashboard')
+  await expect(dash).not.toContainText(
+    /저장된 실적|저장된 누적 기록|저장된 기간별 성과|1,200원|2,351원/,
+  )
+  await expect(dash).not.toContainText(archivedComment)
+  await expect(dash.getByRole('table')).toHaveCount(0)
   await expect(
-    page.getByRole('heading', { name: '광고 자동 보고서', exact: true }),
+    dash.locator('select, input[type=month], input[type=file]'),
   ).toHaveCount(0)
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption({ label: '저장된 누적 기록' })
-  await expect(adValues(page)).toContainText('1,200원')
-  await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
   await expect(
-    page.getByRole('heading', { name: '핵심 성과', exact: true }),
+    dash.getByRole('button', { name: /2026\.11\.0[17]/ }),
   ).toHaveCount(0)
-  await expect(page.locator('.reviewed-caution')).toHaveCount(0)
   await expect(
-    page.getByRole('heading', { name: '한 줄 결과', exact: true }),
+    dash.locator('.metric-grid, .reviewed-history, .reviewed-awaiting'),
+  ).toHaveCount(0)
+  await expect(
+    dash.getByRole('button', { name: '보고 문장 복사' }),
+  ).toHaveCount(0)
+  await expect(
+    dash.getByRole('heading', { name: '한 줄 결과', exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('link', { name: '주간업무보고', exact: true }),
   ).toHaveCount(0)
-  await expect(page.locator('.reviewed-ad-period')).toContainText(
-    '집계 날짜 확인 중',
-  )
-  const thumbnail = page.locator('.reviewed-ad-heading img')
+  const thumbnail = dash.locator('.reviewed-ad-heading img')
   await expect(thumbnail).toHaveAttribute('src', ad.thumbnailUrl!)
   await expect(thumbnail).toBeVisible()
   expect((await thumbnail.boundingBox())!.width).toBeGreaterThanOrEqual(96)
-  await expect(page.getByText('캡처 당시 활성', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('캡처 확인 자료', { exact: true })).toHaveCount(0)
-  await expect(
-    page.getByText('전달받은 캡처의 수치를 보고 있습니다', { exact: true }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: '보고 문장 복사' }),
-  ).toHaveCount(0)
-  const values = page.locator('.reviewed-ad-values')
-  await expect(
-    values.getByText('Instagram 프로필 방문', { exact: true }),
-  ).toBeVisible()
-  await expect(values.getByText('조회한 사람', { exact: true })).toBeVisible()
-  await expect(
-    values.getByText('조회한 사람', { exact: true }).locator('..'),
-  ).toContainText('90명')
-  await expect(
-    values.getByText('링크 클릭', { exact: true }).locator('..'),
-  ).toContainText('0회')
-  await expect(
-    values.locator('dt').filter({ hasText: /^(노출|도달)$/ }),
-  ).toHaveCount(0)
-  const link = page.getByRole('link', { name: 'Instagram 게시물 보기' })
+  const link = dash.getByRole('link', { name: 'Instagram 게시물 보기' })
   await expect(link).toHaveAttribute('href', ad.postUrl)
   await expect(link).toHaveAttribute('target', '_blank')
   await expect(link).toHaveAttribute('rel', /noopener/)
-  await expect(page.locator('.reviewed-awaiting')).toContainText(
-    '두 번째 광고 자료 대기',
-  )
-  await expect(page.locator('.reviewed-awaiting')).not.toContainText('0원')
-  await expect(page.locator('.reviewed-awaiting')).not.toContainText('0회')
-  await expect(
-    page.getByRole('link', { name: '인사이트 기록', exact: true }),
-  ).toHaveCount(0)
-  await expect(page.locator('input[type=file]')).toHaveCount(0)
-  await expect(page.getByText('Instagram 연결됨 · 광고 권한 대기')).toHaveCount(
-    0,
-  )
   expect(errors).toEqual([])
 })
 
-test('누적 자료만 있을 때 저장되지 않은 주차와 월을 만들지 않는다', async ({
-  page,
-}) => {
-  await mockData(page)
-  await page.goto('/')
-  const period = page.getByRole('combobox', { name: /^조회 기간/ })
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
-  await expect(period.locator('option')).toHaveCount(2)
-  await expect(page.locator('.reviewed-ad').first()).not.toContainText(
-    '1,200원',
-  )
-  await expect(page.locator('input[type=month]')).toHaveCount(0)
-  await expect(page.locator(`option[value="${firstWeek}"]`)).toHaveCount(0)
-  await expect(page.locator('.reviewed-history')).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: '보고 문장 복사' }),
-  ).toHaveCount(0)
-  await period.selectOption({ label: '저장된 누적 기록' })
-  await expect(adValues(page)).toContainText('1,200원')
-  await expect(page.locator('.reviewed-ad-period')).toContainText(
-    '집계 날짜 확인 중',
-  )
-})
-
-test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회·총예산을 구분한다', async ({
+test('실제 Meta 지출과 링크 클릭을 표시하고 캡처 지표 및 광고 설정 예산과 구분한다', async ({
   page,
 }) => {
   const secondAd: ReviewedAd = {
@@ -650,29 +648,30 @@ test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회�
   ])
   value.ads.push(secondAd)
   await mockData(page, value)
+  await mockLifetime(page, () => [
+    total(ad.id, 731),
+    { ...total(secondAd.id, 2576), linkClicks: 17 },
+  ])
   await page.goto('/')
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption({ label: '저장된 누적 기록' })
   const second = page.locator('.reviewed-ad').filter({
     has: page.getByRole('heading', { name: secondAd.title, exact: true }),
   })
   await expect(second).toBeVisible()
   await expect(
     second.getByText('링크 클릭', { exact: true }).locator('..'),
-  ).toContainText('30회')
+  ).toContainText('17회')
   await expect(
     second.getByText('링크 클릭당 비용', { exact: true }).locator('..'),
-  ).toContainText('60원')
+  ).toContainText('152원')
   await expect(
-    second.getByText('랜딩 페이지 조회', { exact: true }).locator('..'),
-  ).toContainText('20회')
+    second.getByText('랜딩 페이지 조회', { exact: true }),
+  ).toHaveCount(0)
   await expect(second.getByText('웹사이트 방문', { exact: true })).toHaveCount(
     0,
   )
   await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
-  await expect(adValues(page)).toContainText('1,200원')
-  await expect(adValues(page, secondAd.title)).toContainText('1,800원')
+  await expect(adValues(page)).toContainText('731원')
+  await expect(adValues(page, secondAd.title)).toContainText('2,576원')
   expect(
     (await page.locator('.reviewed-ad-values').allTextContents()).join('\n'),
   ).not.toContain('3,000원')
@@ -680,182 +679,15 @@ test('두 광고의 서로 다른 집계 기간과 링크 클릭·랜딩 조회�
   await expect(second).toContainText('총 예산')
   await expect(second).toContainText('3,000원')
   await expect(second.getByText('일일 예산', { exact: true })).toHaveCount(0)
-})
-
-test('확인된 두 주를 다시 선택할 수 있고 같은 기간 수정본은 최신 한 건만 사용한다', async ({
-  page,
-}) => {
-  const weeks = data([
-    snapshot({
-      id: 'current-cumulative',
-      scope: 'lifetime',
-      period: { start: '2026-11-01', end: '2026-11-14' },
-      reviewedAt: '2026-11-15T00:00:00Z',
-      metrics: metrics({ spend: 3300 }),
-    }),
-    snapshot({
-      id: 'first-week-old',
-      scope: 'selected_period',
-      period: { start: '2026-11-01', end: '2026-11-07' },
-      reviewedAt: '2026-11-08T00:00:00Z',
-      metrics: metrics({ spend: 400 }),
-    }),
-    snapshot({
-      id: 'first-week-corrected',
-      scope: 'selected_period',
-      period: { start: '2026-11-01', end: '2026-11-07' },
-      reviewedAt: '2026-11-09T00:00:00Z',
-      metrics: metrics({ spend: 1100 }),
-    }),
-    snapshot({
-      id: 'second-week',
-      scope: 'selected_period',
-      period: { start: '2026-11-08', end: '2026-11-14' },
-      reviewedAt: '2026-11-15T01:00:00Z',
-      metrics: metrics({ spend: 2200 }),
-    }),
-  ])
-  await mockData(page, weeks)
-  await page.goto('/')
-  const period = page.getByRole('combobox', { name: /^조회 기간/ })
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
-  await period.selectOption(secondWeek)
-  await expect(adValues(page)).toContainText('2,200원')
-  await expect(
-    page.getByRole('combobox', { name: /^조회 기간/ }).locator('option'),
-  ).toHaveCount(4)
-  await expect(
-    page.locator('option[value="2026-11-15|2026-11-21"]'),
-  ).toHaveCount(0)
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption(firstWeek)
-  await expect(adValues(page)).toContainText('1,100원')
-  await expect(adValues(page)).not.toContainText('1,500원')
-  await expect(page.locator('.reviewed-ad-period')).toContainText(
-    '2026.11.01 — 2026.11.07',
-  )
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption(secondWeek)
-  await expect(adValues(page)).toContainText('2,200원')
-  await page.reload()
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption(firstWeek)
-  await expect(adValues(page)).toContainText('1,100원')
-  await expect(page.locator('.reviewed-history-table tbody tr')).toHaveCount(2)
-  const row = page
-    .locator('.reviewed-history-table tbody tr')
-    .filter({ hasText: '2026.11.01 — 2026.11.07' })
-  await expect(row).toContainText('1,100원')
-  await expect(row).not.toContainText('1,500원')
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption({ label: '저장된 누적 기록' })
-  await expect(adValues(page)).toContainText('3,300원')
-  await expect(adValues(page)).not.toContainText('2,200원')
-})
-
-test('사용자 기준 기간·순증 기간·전체 누적을 분리하고 저장한 한 줄 코멘트를 표시한다', async ({
-  page,
-}) => {
-  const baselinePeriod = { start: '2026-10-29', end: '2026-11-06' }
-  const incrementPeriod = { start: '2026-11-07', end: '2026-11-13' }
-  const baselineMetrics = metrics({
-    spend: 900,
-    profileVisits: 9,
-    profileVisitCost: 100,
-    views: 90,
-    viewers: 50,
-    linkClicks: 6,
-  })
-  const currentMetrics = metrics({
-    spend: 1600,
-    profileVisits: 16,
-    profileVisitCost: 100,
-    views: 160,
-    viewers: 80,
-    linkClicks: 10,
-  })
-  const comment =
-    '방문당 비용은 유지됐고, 이번 기간 프로필 방문 7회가 추가됐습니다.'
-  const value = data([
-    snapshot(),
-    snapshot({
-      id: 'baseline-cumulative',
-      period: baselinePeriod,
-      scope: 'lifetime',
-      basis: 'user_assigned',
-      sourceSnapshotIds: ['synthetic-lifetime'],
-      metrics: baselineMetrics,
-      reviewedAt: '2026-11-06T02:00:00Z',
-    }),
-    snapshot({
-      id: 'baseline-period',
-      period: baselinePeriod,
-      scope: 'selected_period',
-      basis: 'user_assigned',
-      sourceSnapshotIds: ['baseline-cumulative'],
-      metrics: baselineMetrics,
-      reviewedAt: '2026-11-06T02:01:00Z',
-    }),
-    snapshot({
-      id: 'current-cumulative',
-      period: { start: baselinePeriod.start, end: incrementPeriod.end },
-      scope: 'lifetime',
-      metrics: currentMetrics,
-      reviewedAt: '2026-11-13T01:00:00Z',
-    }),
-    snapshot({
-      id: 'newer-weekly-difference',
-      period: incrementPeriod,
-      scope: 'selected_period',
-      basis: 'cumulative_difference',
-      sourceSnapshotIds: ['baseline-cumulative', 'current-cumulative'],
-      metrics: metrics({
-        spend: 700,
-        profileVisits: 7,
-        profileVisitCost: 100,
-        views: 70,
-        viewers: null,
-        linkClicks: 4,
-      }),
-      commentary: comment,
-      reviewedAt: '2026-11-13T01:10:00Z',
-    }),
-  ])
-  await mockData(page, value)
-  await page.goto('/')
-  const period = page.getByRole('combobox', { name: /^조회 기간/ })
-  await expect(period.locator('option:checked')).toHaveText('전체 누적 성과')
-  await period.selectOption('2026-11-07|2026-11-13')
-  await expect(period.locator('option')).toHaveCount(4)
-  await expect(page.locator('.reviewed-report-text')).toHaveText(comment)
-  await expect(adValues(page)).toContainText('700원')
-  await expect(
-    adValues(page).getByText('조회한 사람', { exact: true }),
-  ).toHaveCount(0)
-  await period.selectOption({ label: '저장된 누적 기록' })
-  await expect(adValues(page)).toContainText('1,600원')
-  await expect(adValues(page)).not.toContainText('700원')
-  await expect(page.locator('.reviewed-report-text')).not.toContainText(comment)
-  await period.selectOption('2026-10-29|2026-11-06')
-  await expect(adValues(page)).toContainText('900원')
-  await expect(page.locator('.reviewed-ad-period')).toContainText(
-    '2026.10.29 — 2026.11.06',
-  )
-  await expect(page.locator('.reviewed-history-table tbody tr')).toHaveCount(2)
-  await expect(
-    page.getByRole('link', { name: '주간업무보고', exact: true }),
-  ).toHaveCount(0)
+  await second.getByText('광고 타겟', { exact: true }).click()
+  await expect(second).toContainText('검증 도시')
 })
 
 test('자료 조회 실패는 연결 성공이나 실제 0원으로 표시하지 않고 재시도할 수 있다', async ({
   page,
 }) => {
   await mockConnection(page)
+  await mockLifetime(page, () => [total(ad.id, 1629)])
   let attempts = 0
   let failing = true
   await page.route('**/api/performance', (route) => {
@@ -880,20 +712,18 @@ test('자료 조회 실패는 연결 성공이나 실제 0원으로 표시하지
   failing = false
   await page.getByRole('button', { name: '자료 다시 불러오기' }).click()
   await expect(page.locator('.reviewed-dashboard')).toBeVisible()
-  await page
-    .getByRole('combobox', { name: /^조회 기간/ })
-    .selectOption({ label: '저장된 누적 기록' })
-  await expect(adValues(page)).toContainText('1,200원')
+  await expect(adValues(page)).toContainText('1,629원')
+  await expect(page.locator('.reviewed-dashboard')).not.toContainText('1,200원')
   await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(0)
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
 for (const width of [375, 768, 1440]) {
-  test(`캡처 확인 성과와 주간 선택이 ${width}px에서 넘치지 않는다`, async ({
+  test(`Meta 전체 누적과 주간 조회 버튼이 ${width}px에서 넘치지 않는다`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 960 })
-    await mockData(page)
+    await mockInventory(page, true)
     await page.goto('/')
     await expect(page.locator('.reviewed-dashboard')).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
@@ -902,16 +732,16 @@ for (const width of [375, 768, 1440]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true)
-    await expect(
-      page.getByRole('combobox', { name: /^조회 기간/ }).locator('option'),
-    ).toHaveCount(2)
+    await expect(periodMode(page, '전체 누적')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect(periodMode(page, '월간')).toBeDisabled()
     await expect(page.locator('.reviewed-dashboard .metric-grid')).toHaveCount(
       0,
     )
-    await page
-      .getByRole('combobox', { name: /^조회 기간/ })
-      .selectOption({ label: '저장된 누적 기록' })
-    await expect(adValues(page)).toContainText('1,200원')
+    await chooseRange(page, '주간', '주간 · 2026.11.09 — 2026.11.15')
+    await expect(adValues(page)).toContainText('3,786원')
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
