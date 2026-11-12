@@ -1,4 +1,12 @@
 import type { Env } from './types'
+import { readMetaAds } from './meta-ads'
+import {
+  createInquiry,
+  deleteInquiry,
+  listInquiries,
+  updateInquiry,
+  InquiryError,
+} from './inquiries'
 import { base64Url, equal, hash, randomSecret } from './crypto'
 import {
   ANALYTICS_MENUS,
@@ -92,14 +100,17 @@ function sameOrigin(request: Request, env: Env) {
   )
     throw new AnalyticsError('origin_not_allowed', 403)
 }
-async function body(request: Request): Promise<Record<string, unknown>> {
+async function body(
+  request: Request,
+  maxBytes = BODY_LIMIT,
+): Promise<Record<string, unknown>> {
   if (
     request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !==
     'application/json'
   )
     throw new AnalyticsError('invalid_request', 400)
   if (
-    Number(request.headers.get('Content-Length') ?? 0) > BODY_LIMIT ||
+    Number(request.headers.get('Content-Length') ?? 0) > maxBytes ||
     !request.body
   )
     throw new AnalyticsError('invalid_request', 400)
@@ -110,7 +121,7 @@ async function body(request: Request): Promise<Record<string, unknown>> {
     const part = await reader.read()
     if (part.done) break
     length += part.value.length
-    if (length > BODY_LIMIT) {
+    if (length > maxBytes) {
       await reader.cancel()
       throw new AnalyticsError('invalid_request', 400)
     }
@@ -169,6 +180,13 @@ async function adminSession(
 async function requireAdmin(request: Request, env: Env) {
   const session = await adminSession(request, env)
   if (!session) throw new AnalyticsError('authentication_required', 401)
+  return session
+}
+async function requireAdminMutation(request: Request, env: Env) {
+  sameOrigin(request, env)
+  const session = await requireAdmin(request, env)
+  if (!equal(request.headers.get('X-CSRF-Token') ?? '', session.csrf_token))
+    throw new AnalyticsError('invalid_csrf', 403)
   return session
 }
 async function visitor(
@@ -507,14 +525,42 @@ export async function adminAnalytics(
     if (path === '/api/admin/login' && request.method === 'POST')
       return await login(request, env)
     if (path === '/api/admin/logout' && request.method === 'POST') {
-      sameOrigin(request, env)
-      const session = await requireAdmin(request, env)
-      if (!equal(request.headers.get('X-CSRF-Token') ?? '', session.csrf_token))
-        throw new AnalyticsError('invalid_csrf', 403)
+      const session = await requireAdminMutation(request, env)
       await env.DB.prepare('DELETE FROM admin_sessions WHERE session_hash=?')
         .bind(session.session_hash)
         .run()
       return json({ authenticated: false }, 200, cookie(ADMIN_COOKIE, '', 0))
+    }
+    if (path === '/api/admin/inquiries' && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return json({ items: await listInquiries(env) })
+    }
+    if (path === '/api/admin/inquiries' && request.method === 'POST') {
+      await requireAdminMutation(request, env)
+      return json({
+        item: await createInquiry(env, await body(request, 16_384), (value) =>
+          hmac(env, value),
+        ),
+      })
+    }
+    const inquiryPath = /^\/api\/admin\/inquiries\/([^/]+)$/.exec(path)
+    if (inquiryPath && request.method === 'DELETE') {
+      await requireAdminMutation(request, env)
+      return json(await deleteInquiry(env, inquiryPath[1], await body(request)))
+    }
+    if (inquiryPath && request.method === 'PUT') {
+      await requireAdminMutation(request, env)
+      return json({
+        item: await updateInquiry(
+          env,
+          inquiryPath[1],
+          await body(request, 16_384),
+        ),
+      })
+    }
+    if (path === '/api/admin/meta-ads' && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return json(await readMetaAds(env))
     }
     if (path === '/api/admin/analytics' && request.method === 'GET')
       return await analytics(request, env)
@@ -522,16 +568,16 @@ export async function adminAnalytics(
       return await collect(request, env)
     return json({ error: { code: 'not_found' } }, 404)
   } catch (error) {
+    const knownError =
+      error instanceof AnalyticsError || error instanceof InquiryError
+    const fallback = new URL(request.url).pathname.startsWith(
+      '/api/admin/inquiries',
+    )
+      ? 'inquiries_unavailable'
+      : 'analytics_unavailable'
     const response = json(
-      {
-        error: {
-          code:
-            error instanceof AnalyticsError
-              ? error.code
-              : 'analytics_unavailable',
-        },
-      },
-      error instanceof AnalyticsError ? error.status : 503,
+      { error: { code: knownError ? error.code : fallback } },
+      knownError ? error.status : 503,
     )
     if (response.status === 429) response.headers.set('Retry-After', '900')
     return response

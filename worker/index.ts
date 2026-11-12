@@ -3,6 +3,9 @@ import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
+import { collectMetaAds, readPublicMetaAds } from './meta-ads'
+import { readMetaLifetime } from './meta-lifetime'
+import { getMetaAdThumbnail } from './meta-ad-assets'
 import {
   authorizationUrl,
   configuration,
@@ -260,6 +263,12 @@ async function api(request: Request, env: Env) {
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
+  if (path === '/api/meta-ads' && request.method === 'GET')
+    return json(await readPublicMetaAds(env))
+  if (path === '/api/meta-ads/lifetime' && request.method === 'GET')
+    return json(await readMetaLifetime(env))
+  if (path.startsWith('/api/meta-ads/thumbnail/') && request.method === 'GET')
+    return getMetaAdThumbnail(env, path.slice('/api/meta-ads/thumbnail/'.length))
   if (path === '/api/media' && request.method === 'GET')
     return mediaFeed(request, env.DB)
   if (path === '/api/connection' && request.method === 'GET')
@@ -385,7 +394,11 @@ export default {
     secured.headers.set('X-Frame-Options', 'DENY')
     return secured
   },
-  async scheduled(_event: unknown, env: Env) {
-    await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+  async scheduled(event: { cron: string }, env: Env) {
+    if (event.cron === '15 * * * *') {
+      await collectMetaAds(env)
+    } else if (event.cron === '0 0 * * *') {
+      await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+    }
   },
 }

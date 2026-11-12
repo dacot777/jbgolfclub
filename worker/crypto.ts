@@ -45,20 +45,28 @@ async function tokenKey(secret: string) {
     'decrypt',
   ])
 }
-export async function encryptToken(token: string, secret: string) {
+export async function encryptToken(
+  token: string,
+  secret: string,
+  context = 'jbgolf:instagram:single:v1',
+) {
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const encrypted = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
       iv,
-      additionalData: encoder.encode('jbgolf:instagram:single:v1'),
+      additionalData: encoder.encode(context),
     },
     await tokenKey(secret),
     encoder.encode(token),
   )
   return `v1.${base64Url(iv)}.${base64Url(new Uint8Array(encrypted))}`
 }
-export async function decryptToken(value: string, secret: string) {
+export async function decryptToken(
+  value: string,
+  secret: string,
+  context = 'jbgolf:instagram:single:v1',
+) {
   const [version, iv, data] = value.split('.')
   if (version !== 'v1' || !iv || !data)
     throw new ConnectionError('invalid_ciphertext', 500)
@@ -67,7 +75,7 @@ export async function decryptToken(value: string, secret: string) {
       {
         name: 'AES-GCM',
         iv: decodeBase64(iv),
-        additionalData: encoder.encode('jbgolf:instagram:single:v1'),
+        additionalData: encoder.encode(context),
       },
       await tokenKey(secret),
       decodeBase64(data),

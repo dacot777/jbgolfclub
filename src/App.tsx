@@ -13,6 +13,7 @@ import {
   Eye,
   Camera,
   LayoutDashboard,
+  MessagesSquare,
   Link2,
   MousePointer2,
   Newspaper,
@@ -51,6 +52,7 @@ import {
   instagramErrors,
 } from '@/lib/instagram-connection'
 import { useReviewedPerformance } from '@/lib/reviewed-performance'
+import { useCardPerformance } from '@/lib/meta-card-performance'
 import { useVisitorTracker } from '@/lib/visitor-tracker'
 import '@/reviewed-dashboard.css'
 
@@ -58,6 +60,14 @@ const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
 const MediaWorkspace = lazy(() => import('@/components/media-workspace'))
 const AdminAnalytics = lazy(() => import('@/components/admin-analytics'))
 const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
+const workspaceRoutes = [
+  'overview',
+  'campaigns',
+  'news',
+  'blog',
+  'admin',
+  ...(__INSTAGRAM_BACKEND__ ? ['inquiries'] : []),
+]
 
 const WeeklyChart = lazy(() =>
   import('@/components/performance-charts').then((m) => ({
@@ -120,15 +130,16 @@ export default function App() {
   const [descending, setDescending] = useState(true)
   const [copied, setCopied] = useState(false)
   const [message, setMessage] = useState('')
+  const messageBox = useRef<HTMLDivElement>(null)
+  const dialogOpener = useRef<HTMLElement | null>(null)
   const [active, setActive] = useState(() =>
-    ['news', 'blog', 'campaigns', 'admin'].includes(
-      window.location.hash.slice(1),
-    )
+    workspaceRoutes.includes(window.location.hash.slice(1))
       ? window.location.hash.slice(1)
       : 'overview',
   )
   const isMedia = active === 'news' || active === 'blog'
-  const isAdmin = active === 'admin'
+  const isInquiries = active === 'inquiries'
+  const isAdmin = active === 'admin' || isInquiries
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isAdmin
@@ -141,10 +152,24 @@ export default function App() {
   )
   const instagram = useInstagramConnection()
   const reviewed = useReviewedPerformance()
-  const showReviewed = !sample && Boolean(reviewed.data?.ads.length)
+  const meta = useCardPerformance(!isMedia && !isAdmin && !sample)
+  const showReviewed =
+    !sample && Boolean(reviewed.data?.ads.length || meta.report?.cards?.length)
   const linkedInstagram = instagram.status?.authenticated
     ? instagram.status.connection
     : null
+  useEffect(() => {
+    if (!message) return
+    function dismissMessage(event: MouseEvent) {
+      if (
+        event.target instanceof Node &&
+        !messageBox.current?.contains(event.target)
+      )
+        setMessage('')
+    }
+    document.addEventListener('click', dismissMessage, true)
+    return () => document.removeEventListener('click', dismissMessage, true)
+  }, [message])
   useEffect(() => {
     const navigate = () => {
       const target = window.location.hash.slice(1)
@@ -155,19 +180,28 @@ export default function App() {
           window.location.pathname + window.location.search + '#overview',
         )
         setActive('overview')
-      } else if (
-        ['overview', 'campaigns', 'news', 'blog', 'admin'].includes(target)
-      )
-        setActive(target)
+      } else if (__INSTAGRAM_BACKEND__ && target === 'ad-report') {
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search + '#campaigns',
+        )
+        setSample(false)
+        setActive('campaigns')
+        document.getElementById('campaigns')?.scrollIntoView()
+      } else if (workspaceRoutes.includes(target)) setActive(target)
       else if (!target) setActive('overview')
     }
+    navigate()
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
   useEffect(() => {
     adminClicks.current = { count: 0, lastAt: 0 }
     if (isMedia || isAdmin) window.scrollTo({ top: 0, behavior: 'instant' })
-  }, [active, isMedia, isAdmin])
+    else if (active === 'campaigns')
+      document.getElementById('campaigns')?.scrollIntoView()
+  }, [active, isMedia, isAdmin, sample])
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.hash === '#records' || url.hash === '#weekly') {
@@ -332,6 +366,9 @@ export default function App() {
           {[
             { id: 'overview', name: '성과 대시보드', icon: LayoutDashboard },
             { id: 'campaigns', name: '광고 상세', icon: Target },
+            ...(__INSTAGRAM_BACKEND__
+              ? [{ id: 'inquiries', name: '문의·상담', icon: MessagesSquare }]
+              : []),
             { id: 'news', name: '기사', icon: Newspaper },
             { id: 'blog', name: '블로그', icon: NotebookText },
           ].map((item) => (
@@ -387,13 +424,15 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {isAdmin
-                ? '관리자'
-                : active === 'news'
-                  ? '기사'
-                  : active === 'blog'
-                    ? '블로그'
-                    : '성과 대시보드'}
+              {isInquiries
+                ? '문의·상담 현황'
+                : isAdmin
+                  ? '관리자'
+                  : active === 'news'
+                    ? '기사'
+                    : active === 'blog'
+                      ? '블로그'
+                      : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
@@ -410,7 +449,7 @@ export default function App() {
                       : linkedInstagram
                         ? linkedInstagram.needsReconnect
                           ? 'Instagram 재연결 필요'
-                          : 'Instagram 연결됨 · 광고 권한 대기'
+                          : 'Instagram 프로필 연결됨'
                         : 'Instagram 계정 미연결'}
             </span>
             <button
@@ -426,6 +465,34 @@ export default function App() {
           </div>
         </header>
         <main id="main">
+          {!isAdmin && !isMedia && (
+            <>
+              <section id="overview" className="page-heading">
+                <div>
+                  <p className="eyebrow">MARKETING OVERVIEW</p>
+                  <h1>
+                    인스타그램 광고 성과<span>.</span>
+                  </h1>
+                  <p className="page-description">
+                    {showReviewed
+                      ? 'JB GOLF ACADEMY · 광고별 성과와 주간 변화를 한눈에 확인하세요.'
+                      : 'JB골프아카데미와 JB골프클럽의 광고 흐름을 한눈에 확인하세요.'}
+                  </p>
+                </div>
+                {!showReviewed && (
+                  <Button
+                    variant="outline"
+                    className="period-button"
+                    onClick={() => setDialog('period')}
+                  >
+                    <CalendarDays aria-hidden="true" />
+                    <span>{period.current}</span>
+                    <ChevronDown aria-hidden="true" />
+                  </Button>
+                )}
+              </section>
+            </>
+          )}
           {reviewed.error && !sample && !isMedia && !isAdmin && (
             <div className="reviewed-load-error" role="status">
               {reviewed.error}
@@ -438,7 +505,7 @@ export default function App() {
             <Suspense
               fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
             >
-              <AdminAnalytics />
+              <AdminAnalytics key={active} inquiries={isInquiries} />
             </Suspense>
           ) : isMedia ? (
             <Suspense
@@ -455,31 +522,16 @@ export default function App() {
                 <p role="status">확인된 광고 성과를 불러오는 중입니다.</p>
               }
             >
-              <ReviewedDashboard data={reviewed.data!} />
+              <ReviewedDashboard
+                data={reviewed.data}
+                report={meta.report}
+                failed={meta.failed}
+                lifetime={meta.lifetime}
+                lifetimeFailed={meta.lifetimeFailed}
+              />
             </Suspense>
           ) : (
             <>
-              <section id="overview" className="page-heading">
-                <div>
-                  <p className="eyebrow">MARKETING OVERVIEW</p>
-                  <h1>
-                    인스타그램 광고 성과<span>.</span>
-                  </h1>
-                  <p className="page-description">
-                    JB골프아카데미와 JB골프클럽의 광고 흐름을 한눈에 확인하세요.
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  className="period-button"
-                  onClick={() => setDialog('period')}
-                >
-                  <CalendarDays aria-hidden="true" />
-                  <span>{period.current}</span>
-                  <ChevronDown aria-hidden="true" />
-                </Button>
-              </section>
-
               <div
                 className={sample ? 'notice sample-notice' : 'notice'}
                 role="status"
@@ -504,8 +556,8 @@ export default function App() {
                       {sample
                         ? '화면 검토용 합성 데이터입니다. 실제 광고 실적이 아닙니다.'
                         : linkedInstagram
-                          ? '광고 계정의 실적 조회 권한은 별도로 설정해야 합니다.'
-                          : '계정 연결 전에는 실적을 0으로 표시하지 않습니다.'}
+                          ? '광고별 상세 실적에서 집행 결과를 확인하세요.'
+                          : '계정 연결 메뉴에서 프로필을 연결할 수 있습니다.'}
                     </span>
                   </span>
                 </div>
@@ -519,7 +571,7 @@ export default function App() {
                 <div className="report-body">
                   <div className="report-kicker">
                     <Sparkles size={14} aria-hidden="true" /> THIS WEEK’S BRIEF{' '}
-                    <span>{sample ? '예시 보고' : '연결 대기'}</span>
+                    <span>{sample ? '예시 보고' : '저장된 자료 없음'}</span>
                   </div>
                   <h2 id="report-title">인스타그램 광고 주간업무보고</h2>
                   {sample ? (
@@ -530,10 +582,9 @@ export default function App() {
                         이번 주의 숫자에서, 다음 주의 방향까지.
                       </p>
                       <p className="report-placeholder">
-                        광고 실적 조회 권한을 연결하면 주간 핵심 성과·지난주
-                        대비 변화·월간 누적 실적을
-                        <br className="desktop-only" /> 같은 집계 기준으로
-                        정리한 보고 문장이 표시됩니다.
+                        저장된 보고 자료가 없습니다.
+                        {__INSTAGRAM_BACKEND__ &&
+                          ' Meta에서 수집한 실적은 광고별 상세 실적에서 확인하세요.'}
                       </p>
                     </>
                   )}
@@ -542,7 +593,7 @@ export default function App() {
                       <i />
                       {sample
                         ? `예시 집계 기준 · 2026.11.05 ${period.time}`
-                        : '마지막 갱신 성공: 아직 없음'}
+                        : '저장된 보고서 없음'}
                     </span>
                     <span>한국 표준시 · Instagram 게재 실적</span>
                   </div>
@@ -1030,12 +1081,12 @@ export default function App() {
                                     <strong>
                                       {sample
                                         ? '조건에 맞는 광고가 없습니다'
-                                        : '연결된 광고 계정이 없습니다'}
+                                        : '저장된 광고 자료가 없습니다'}
                                     </strong>
                                     <p>
                                       {sample
                                         ? '검색어 또는 브랜드 필터를 변경해 주세요.'
-                                        : '광고 계정의 조회 권한을 연결하면 Instagram에 게재된 광고를 확인할 수 있습니다.'}
+                                        : '계정 연결 안내에서 광고 실적을 확인하는 방법을 볼 수 있습니다.'}
                                     </p>
                                     {!sample && (
                                       <Button
@@ -1073,8 +1124,8 @@ export default function App() {
                   {sample
                     ? '예시 데이터 · 실제 Meta API와 연결되지 않은 화면입니다.'
                     : linkedInstagram
-                      ? '인스타그램 연결됨 · 광고 실적 권한은 아직 설정되지 않았습니다.'
-                      : '인스타그램 미연결 · 실제 데이터 수집은 아직 시작되지 않았습니다.'}
+                      ? '인스타그램 프로필 연결됨'
+                      : '인스타그램 프로필 미연결'}
                 </span>
                 <button onClick={() => setDialog('connect')}>
                   연결 도움말
@@ -1089,6 +1140,7 @@ export default function App() {
         </main>
       </div>
       <div
+        ref={messageBox}
         role="status"
         aria-live="polite"
         className={message ? 'toast' : 'sr-only'}
@@ -1104,7 +1156,21 @@ export default function App() {
         open={dialog !== null}
         onOpenChange={(open) => !open && setDialog(null)}
       >
-        <DialogContent className="connection-dialog">
+        <DialogContent
+          className="connection-dialog"
+          onOpenAutoFocus={() => {
+            dialogOpener.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null
+          }}
+          onCloseAutoFocus={(event) => {
+            if (dialogOpener.current?.isConnected) {
+              event.preventDefault()
+              dialogOpener.current.focus({ preventScroll: true })
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {dialog === 'period'
@@ -1140,6 +1206,10 @@ export default function App() {
             <>
               <InstagramConnectPanel
                 model={instagram}
+                onReport={() => {
+                  setSample(false)
+                  setDialog(null)
+                }}
                 onSample={() => {
                   setSample(true)
                   setDialog(null)

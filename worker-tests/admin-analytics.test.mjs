@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { build } from 'esbuild'
 import { Miniflare } from 'miniflare'
@@ -44,7 +44,7 @@ const migration = await readFile(
   'utf8',
 )
 
-async function fixture(overrides = {}) {
+async function fixture(overrides = {}, extraMigrations = []) {
   const mf = new Miniflare({
     modules: true,
     script: bundle.outputFiles[0].text,
@@ -60,7 +60,15 @@ async function fixture(overrides = {}) {
   const db = await mf.getD1Database('DB')
   try {
     await db.batch(
-      migration
+      [
+        migration,
+        ...(await Promise.all(
+          extraMigrations.map((name) =>
+            readFile('worker/migrations/' + name + '.sql', 'utf8'),
+          ),
+        )),
+      ]
+        .join('\n')
         .split(';')
         .map((statement) => statement.trim())
         .filter(Boolean)
@@ -118,10 +126,358 @@ const cookieFrom = (response) =>
   response.headers.get('Set-Cookie')?.split(';')[0]
 const value = (db, sql) => db.prepare(sql).first()
 
+async function inquiriesFixture({ legacy = false } = {}) {
+  return fixture(
+    {
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+      META_AD_ACCOUNT_ID: '1234',
+    },
+    [
+      '0002_reviewed_performance',
+      '0005_meta_ads',
+      '0006_meta_ad_registry',
+      '0008_inquiries',
+      ...(legacy ? [] : ['0009_inquiry_branches']),
+    ],
+  )
+}
+const newInquiry = () => ({
+  id: randomUUID(),
+  firstDate: null,
+  product: 'camp',
+  channel: 'kakao',
+  source: 'unknown',
+  adId: null,
+  stage: 'received',
+  assignee: 'unassigned',
+  name: '',
+  contact: '',
+  note: '',
+  nextAction: '',
+  branch: null,
+})
+const inquiries = '/api/admin/inquiries'
+
+test('private inquiry writes require the admin session, CSRF and correct origin and reject invalid dates and ad attribution', async () => {
+  const f = await inquiriesFixture()
+  try {
+    const input = newInquiry()
+    assert.equal((await f.send(inquiries)).status, 401)
+    assert.equal((await f.send(inquiries, { body: input })).status, 401)
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const write = (body) => f.send(inquiries, { cookie, headers, body })
+    assert.equal((await f.send(inquiries, { cookie, body: input })).status, 403)
+    assert.equal(
+      (
+        await f.send(inquiries, {
+          cookie,
+          headers: { ...headers, Origin: 'https://foreign.invalid' },
+          body: input,
+        })
+      ).status,
+      403,
+    )
+    for (const override of [
+      { id: 'bad' },
+      { firstDate: '2026-02-29' },
+      { product: 'bad' },
+      { branch: 'unknown-branch' },
+      { source: 'search', adId: 'test-ad' },
+      { note: 'a'.repeat(1501) },
+      { source: 'instagram_ad', adId: 'unregistered' },
+    ])
+      assert.equal((await write({ ...input, ...override })).status, 400)
+    assert.equal(
+      (await write({ ...input, note: 'x'.repeat(16385) })).status,
+      400,
+    )
+    await f.db
+      .prepare("INSERT INTO reviewed_ads(id,data) VALUES ('test-ad','{}')")
+      .run()
+    const added = await write({
+      ...input,
+      source: 'instagram_ad',
+      adId: 'test-ad',
+      firstDate: '2024-02-29',
+    })
+    assert.equal(added.status, 200)
+    assert.equal((await added.json()).item.adId, 'test-ad')
+    const list = await f.send(inquiries, { cookie })
+    assert.match(list.headers.get('Cache-Control'), /no-store/)
+    assert.equal((await list.json()).items.length, 1)
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('branch migration preserves an existing inquiry, legacy creates can retry and legacy edits retain the assigned branch', async () => {
+  const f = await inquiriesFixture({ legacy: true })
+  try {
+    const { id, branch: _branch, ...originalFields } = newInquiry()
+    const legacyFingerprint = createHmac(
+      'sha256',
+      'test-only-key-abcdefghijklmnopqrstuvwxyz0123456789',
+    )
+      .update('inquiry-create:' + id + ':' + JSON.stringify(originalFields))
+      .digest('base64url')
+    await f.db
+      .prepare(
+        'INSERT INTO inquiries(id,product,channel,creation_fingerprint) VALUES (?,?,?,?)',
+      )
+      .bind(
+        id,
+        originalFields.product,
+        originalFields.channel,
+        legacyFingerprint,
+      )
+      .run()
+    const migrationSql = await readFile(
+      'worker/migrations/0009_inquiry_branches.sql',
+      'utf8',
+    )
+    await f.db.batch(
+      migrationSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => f.db.prepare(s)),
+    )
+    const { cookie, csrfToken } = await f.signIn()
+    const options = { cookie, headers: { 'X-CSRF-Token': csrfToken } }
+    const create = (body) => f.send(inquiries, { ...options, body })
+    const update = (version, fields) =>
+      f.send(inquiries + '/' + id, {
+        ...options,
+        method: 'PUT',
+        body: { ...originalFields, version, ...fields },
+      })
+    const migrated = (await (await f.send(inquiries, { cookie })).json())
+      .items[0]
+    assert.deepEqual(migrated, {
+      id,
+      ...originalFields,
+      version: 1,
+      branch: null,
+    })
+    assert.equal((await create({ id, ...originalFields })).status, 200)
+    assert.equal(
+      (await create({ id, ...originalFields, branch: null })).status,
+      200,
+    )
+    let version = 1
+    for (const branch of ['hanam', 'cheongdam', 'seohyeon']) {
+      const edited = (await (await update(version, { branch })).json()).item
+      assert.equal(edited.branch, branch)
+      version = edited.version
+    }
+    const legacyEdit = (
+      await (await update(version, { stage: 'consulting' })).json()
+    ).item
+    assert.equal(legacyEdit.branch, 'seohyeon')
+    assert.equal(
+      (await (await update(legacyEdit.version, { branch: null })).json()).item
+        .branch,
+      null,
+    )
+    const newId = randomUUID()
+    assert.equal(
+      (
+        await (
+          await create({ id: newId, ...originalFields, branch: 'hanam' })
+        ).json()
+      ).item.branch,
+      'hanam',
+    )
+    assert.equal(
+      (await create({ id: newId, ...originalFields, branch: 'cheongdam' }))
+        .status,
+      409,
+    )
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('only an authorized versioned delete removes an inquiry; repeated delete and delayed create cannot restore it', async () => {
+  const f = await inquiriesFixture()
+  try {
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const options = { cookie, headers }
+    const input = {
+      ...newInquiry(),
+      branch: 'cheongdam',
+      contact: 'synthetic-only',
+    }
+    const create = () => f.send(inquiries, { ...options, body: input })
+    assert.equal((await create()).status, 200)
+    const other = newInquiry()
+    assert.equal(
+      (await f.send(inquiries, { ...options, body: other })).status,
+      200,
+    )
+    const path = inquiries + '/' + input.id
+    const remove = (version, overrides = {}) =>
+      f.send(path, {
+        ...options,
+        method: 'DELETE',
+        body: { version },
+        ...overrides,
+      })
+    assert.equal((await remove(1, { cookie: undefined })).status, 401)
+    assert.equal((await remove(1, { headers: {} })).status, 403)
+    assert.equal(
+      (
+        await remove(1, {
+          headers: { ...headers, Origin: 'https://foreign.invalid' },
+        })
+      ).status,
+      403,
+    )
+    for (const version of [0, '1', null])
+      assert.equal((await remove(version)).status, 400)
+    const edited = await f.send(path, {
+      ...options,
+      method: 'PUT',
+      body: { ...input, version: 1, stage: 'consulting' },
+    })
+    assert.equal((await edited.json()).item.version, 2)
+    assert.equal((await remove(1)).status, 409)
+    assert.equal(
+      (
+        await f.db
+          .prepare('SELECT COUNT(*) AS count FROM deleted_inquiry_ids')
+          .first()
+      ).count,
+      0,
+    )
+    const pair = await Promise.all([remove(2), remove(2)])
+    for (const response of pair) {
+      assert.equal(response.status, 200)
+      assert.match(response.headers.get('Cache-Control'), /no-store/)
+      assert.deepEqual(await response.json(), { deleted: true })
+    }
+    assert.equal((await create()).status, 409)
+    assert.deepEqual(
+      (await f.db.prepare('SELECT * FROM deleted_inquiry_ids').all()).results,
+      [{ id: input.id }],
+    )
+    assert.equal(
+      await f.db
+        .prepare('SELECT * FROM inquiries WHERE id=?')
+        .bind(input.id)
+        .first(),
+      null,
+    )
+    const { items } = await (await f.send(inquiries, { cookie })).json()
+    assert.deepEqual(
+      items.map((item) => item.id),
+      [other.id],
+    )
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('inquiry fields are encrypted, POST retries preserve subsequent edits, and optimistic updates prevent lost changes', async () => {
+  const f = await inquiriesFixture()
+  try {
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const input = {
+      ...newInquiry(),
+      name: 'synthetic-name',
+      contact: 'synthetic-contact',
+      note: 'synthetic-note',
+      nextAction: 'synthetic-action',
+    }
+    const create = (body = input) =>
+      f.send(inquiries, { cookie, headers, body })
+    const pair = await Promise.all([create(), create()])
+    for (const res of pair)
+      assert.deepEqual((await res.json()).item, { ...input, version: 1 })
+    const stored = await f.db
+      .prepare('SELECT * FROM inquiries WHERE id=?')
+      .bind(input.id)
+      .first()
+    for (const text of [
+      input.name,
+      input.contact,
+      input.note,
+      input.nextAction,
+    ])
+      assert.equal(JSON.stringify(stored).includes(text), false)
+    assert.match(stored.private_fields, /^v1\./)
+    const update = (data) =>
+      f.send(inquiries + '/' + input.id, {
+        cookie,
+        headers,
+        method: 'PUT',
+        body: { ...input, version: 1, ...data },
+      })
+    const results = await Promise.all([
+      update({ stage: 'consulting' }),
+      update({ assignee: 'kim_yeoul' }),
+    ])
+    assert.deepEqual(results.map((result) => result.status).sort(), [200, 409])
+    const updated = (
+      await results.find((result) => result.status === 200).json()
+    ).item
+    assert.equal(updated.version, 2)
+    assert.deepEqual((await (await create()).json()).item, updated)
+    assert.equal(
+      (await create({ ...input, contact: 'other-synthetic' })).status,
+      409,
+    )
+    assert.equal((await update({ stage: 'closed' })).status, 409)
+    const seed = randomUUID()
+    await f.db
+      .prepare(
+        'INSERT INTO inquiries(id,created_at,product,channel) VALUES (?,?,?,?)',
+      )
+      .bind(seed, Date.now() + 1, 'lesson', 'phone')
+      .run()
+    const items = (await (await f.send(inquiries, { cookie })).json()).items
+    assert.deepEqual(
+      items.map((item) => item.id),
+      [seed, input.id],
+    )
+    assert.deepEqual(items[0], {
+      ...newInquiry(),
+      id: seed,
+      version: 1,
+      product: 'lesson',
+      channel: 'phone',
+    })
+    assert.deepEqual(items[1], updated)
+    assert.equal(
+      (
+        await f.send(inquiries + '/' + randomUUID(), {
+          cookie,
+          headers,
+          method: 'PUT',
+          body: { ...input, version: 1 },
+        })
+      ).status,
+      404,
+    )
+    // Ciphertext copied to another row must not be accepted as that inquiry's private fields.
+    await f.db
+      .prepare('UPDATE inquiries SET private_fields=? WHERE id=?')
+      .bind(stored.private_fields, seed)
+      .run()
+    assert.equal((await f.send(inquiries, { cookie })).status, 503)
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
 test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아웃·만료를 검증한다', async () => {
   const f = await fixture()
   try {
     assert.equal((await f.send('/api/admin/analytics')).status, 401)
+    assert.equal((await f.send('/api/admin/meta-ads')).status, 401)
     assert.deepEqual(await (await f.send('/api/admin/session')).json(), {
       configured: true,
       authenticated: false,
@@ -138,6 +494,10 @@ test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아�
     assert.equal(auth.configured, true)
     assert.equal(auth.authenticated, true)
     assert.equal(auth.csrfToken.length, 43)
+    const ads = await f.send('/api/admin/meta-ads', { cookie: auth.cookie })
+    assert.equal(ads.status, 200)
+    assert.match(ads.headers.get('Cache-Control'), /no-store/)
+    assert.equal((await ads.json()).status, 'unconfigured')
     const rawSession = (
       await f.db.prepare('SELECT * FROM admin_sessions').all()
     ).results[0]

@@ -15,6 +15,7 @@
     "INSTAGRAM_APP_ID": "YOUR_INSTAGRAM_APP_ID",
     "INSTAGRAM_ACCOUNT_USERNAME": "jbgolfacademy",
     "INSTAGRAM_API_VERSION": "v26.0",
+    "META_ADS_API_VERSION": "v26.0",
   },
   "d1_databases": [
     {
@@ -24,5 +25,5 @@
       "migrations_dir": "worker/migrations",
     },
   ],
-  "triggers": { "crons": ["0 0 * * *"] },
+  "triggers": { "crons": ["0 0 * * *", "15 * * * *"] },
 }

@@ -47,6 +47,11 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
 }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
+  const reportReads: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/meta-ads')
+      reportReads.push(request.url())
+  })
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.setViewportSize({ width: 1440, height: 1024 })
   await page.goto('/')
@@ -55,6 +60,7 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
     page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
   ).toBeVisible()
   await expect(page.getByText('Instagram 계정 미연결')).toBeVisible()
+  await expect(page.locator('#ad-report')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toBeDisabled()
@@ -78,11 +84,19 @@ test('미연결과 예시를 구분하고 같은 데이터로 보고·필터·CS
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'CSV 내보내기' }).click()
   expect((await download).suggestedFilename()).toContain('예시데이터_ad')
+  const exportNotice = page.getByText(
+    '현재 필터의 예시 실적을 CSV로 내보냈습니다.',
+  )
+  await exportNotice.click()
+  await expect(exportNotice).toBeVisible()
+  await page.getByRole('textbox', { name: '광고 이름 검색' }).click()
+  await expect(exportNotice).toHaveCount(0)
   await page.getByRole('button', { name: '예시 닫기' }).click()
   await expect(
     page.getByRole('button', { name: '보고 문장 복사' }),
   ).toBeDisabled()
   expect(errors).toEqual([])
+  expect(reportReads).toEqual([])
 })
 
 for (const width of [375, 768, 1024, 1440]) {
@@ -108,3 +122,26 @@ for (const width of [375, 768, 1024, 1440]) {
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 }
+
+test.describe('대시보드 팝업', () => {
+  test.use({ hasTouch: true, viewport: { width: 375, height: 850 } })
+
+  test('계정 연결과 집계 기간 창은 바깥을 탭하면 닫히고 누른 버튼에 포커스가 돌아간다', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    const triggers = [
+      page.getByRole('button', { name: '계정 연결', exact: true }),
+      page.locator('.period-button'),
+    ]
+    for (const trigger of triggers) {
+      await trigger.click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('heading').tap()
+      await expect(dialog).toBeVisible()
+      await page.touchscreen.tap(3, 3)
+      await expect(dialog).toHaveCount(0)
+      await expect(trigger).toBeFocused()
+    }
+  })
+})
