@@ -12,6 +12,8 @@
 - **시작과 중단**은 서로 다른 근거를 사용합니다. 광고 세트의 시작 예정일과 Instagram에서 실제 노출·지출 등 양수의 성과를 처음 확인한 날짜를 구분합니다. 과거 조회 범위에 제한이 있으면 실제 최초 게재일을 단정할 수 없습니다. 광고·광고 세트·캠페인의 중단 상태는 카드에 반영하고 이전 실적을 보존합니다. 중단 이력에는 Meta의 상태 변경 시각을 우선합니다. 해당 기록이 없으면 처음 중단 상태를 확인한 시각과 확인 가능한 마지막 게재일을 표시합니다. 화면에서는 중단이 기록된 주를 선택했을 때만 중단 표시와 시각을 보여줍니다. 정확한 변경 기록이 없으면 처음 확인한 주에 표시합니다. 광고가 재개돼도 해당 주의 이력을 유지합니다.
 - **캡처 자료**는 기존 D1에 보관합니다. 메인 화면의 조회 기간과 실적 표시는 Meta 데이터만 사용합니다. 링크 클릭과 랜딩 페이지 조회도 별도 지표로 취급합니다. [캡처 기록 기준](REVIEWED_PERFORMANCE.md)
 
+광고 카드에서 **중단된 주 보기**를 누르면 조회 기간이 해당 광고의 가장 최근 중단 기록이 있는 주로 바뀝니다. 중단이 여러 번 있었다면 **주간 → 조회할 주**에서 이전 기록을 확인할 수 있습니다.
+
 ## 회사 광고 계정 연결
 
 회사에서 사용하도록 승인한 Meta 앱을 통해 대상 광고 계정의 성과를 조회할 수 있는 서버용 액세스 토큰(`ads_read`)을 준비합니다. 회사 관리자가 Meta에서 발급한 토큰은 기존 Cloudflare Worker **jbgolf-connection → Settings → Variables and Secrets**에 **Secret** 유형의 `META_ADS_ACCESS_TOKEN`으로 입력합니다. 이 값은 채팅·Git·브라우저 저장소에 기록하지 않습니다. [Meta Marketing API 권한 안내](https://developers.facebook.com/docs/marketing-api/get-started/authorization/) · [Cloudflare Secret 관리](https://developers.cloudflare.com/workers/configuration/secrets/)

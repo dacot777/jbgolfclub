@@ -312,6 +312,14 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
     has: page.getByRole('heading', { name: newCatalogAd.title, exact: true }),
   })
   const lifetime = periodMode(page, '전체 누적')
+  const pauseWeek = paused.getByRole('button', {
+    name: '중단된 주 보기',
+    exact: true,
+  })
+  const weekSelect = page.getByRole('combobox', {
+    name: '조회할 주',
+    exact: true,
+  })
   await expect(cards).toHaveCount(2)
   await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
   await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
@@ -320,6 +328,18 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   await expect(lifetime).toHaveAttribute('aria-pressed', 'true')
   await expect(active).toContainText('13,541원')
   await expect(paused).toContainText('7,465원')
+  await expect(
+    active.getByRole('button', { name: '중단된 주 보기', exact: true }),
+  ).toHaveCount(0)
+  await pauseWeek.click()
+  await expect(periodMode(page, '주간')).toHaveAttribute('aria-pressed', 'true')
+  await expect(weekSelect.locator('option:checked')).toHaveText(
+    '2026.11.09 – 11.15',
+  )
+  await expect(
+    paused.getByRole('heading', { name: ad.title, exact: true }),
+  ).toBeFocused()
+  await expect(pauseWeek).toHaveCount(0)
   await chooseRange(page, '주간', '2026.11.16 – 11.18')
   await expect(active).toContainText('8,432원')
   await expect(paused).toContainText('3,786원')
@@ -329,7 +349,10 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   await expect(paused).toContainText('2026.11.09')
   await expect(paused).toContainText('2026.11.15')
   await expect(paused).not.toContainText('8,432원')
-  await chooseRange(page, '주간', '2026.11.09 – 11.15')
+  await pauseWeek.click()
+  await expect(weekSelect.locator('option:checked')).toHaveText(
+    '2026.11.09 – 11.15',
+  )
   await expect(paused.getByText('일시중단', { exact: true })).toBeVisible()
   await expect(paused).toContainText('3,786원')
   const observed = paused
@@ -376,6 +399,12 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
     title: ad.title,
     status: 'active',
     pauseEvents: [
+      {
+        source: 'meta',
+        at: '2026-10-30T03:00:00Z',
+        previousActiveAt: null,
+        lastDeliveryDate: '2026-10-30',
+      },
       {
         source: 'observed',
         at: '2026-11-08T15:30:00Z',
@@ -430,6 +459,13 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
     has: page.getByRole('heading', { name: staleStatus.title, exact: true }),
   })
   const badge = card.getByText('일시중단', { exact: true })
+  const pauseWeek = card.getByRole('button', {
+    name: '중단된 주 보기',
+    exact: true,
+  })
+  await expect(
+    noEvent.getByRole('button', { name: '중단된 주 보기', exact: true }),
+  ).toHaveCount(0)
   await expect(
     card.getByRole('heading', { name: ad.title, exact: true }),
   ).toBeVisible()
@@ -438,7 +474,7 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
   await expect(card).toContainText('433원')
   await expect(badge).toHaveCount(0)
   await expect(card.locator('.ad-stop-record')).toHaveCount(0)
-  await chooseRange(page, '주간', '2026.11.09 – 11.15')
+  await pauseWeek.click()
   await expect(page.getByRole('combobox', { name: '조회할 주' })).toHaveValue(
     'meta:week:2026-11-09:2026-11-15',
   )
@@ -458,6 +494,15 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
   await expect(card).toContainText('3,033원')
   await expect(badge).toHaveCount(0)
   await expect(card.locator('.ad-stop-record')).toHaveCount(0)
+  await pauseWeek.click()
+  await expect(
+    page.getByRole('combobox', { name: '조회할 주' }).locator('option:checked'),
+  ).toHaveText('2026.11.09 – 11.15')
+  await expect(card.locator('.ad-stop-record')).toContainText('00:30')
+  await expect(pauseWeek).toHaveCount(0)
+  await expect(
+    noEvent.getByRole('button', { name: '중단된 주 보기', exact: true }),
+  ).toHaveCount(0)
 })
 
 test('두 게시물의 Meta 전체 누적이 열린 화면에서 갱신되고 과거 주간·월간 실적은 기간별로 남는다', async ({

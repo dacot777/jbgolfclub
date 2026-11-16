@@ -291,7 +291,8 @@
   margin-left: auto;
   white-space: nowrap;
 }
-.reviewed-post-link {
+.reviewed-post-link,
+.reviewed-pause-week {
   font-size: 12px;
   color: var(--primary);
   display: inline-flex;

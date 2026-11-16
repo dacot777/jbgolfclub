@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, CalendarDays, Camera, ChartColumn } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { number, won } from '@/lib/report'
@@ -172,6 +172,8 @@ function AdPerformance({
   selectionLabel,
   liveRange,
   earlierRange,
+  latestPauseWeek,
+  onSelectWeek,
   lifetimeMode,
   total,
   currency,
@@ -180,10 +182,13 @@ function AdPerformance({
   selectionLabel: string
   liveRange?: CardRange
   earlierRange?: CardRange
+  latestPauseWeek?: CardRange
+  onSelectWeek: (week: CardRange) => void
   lifetimeMode: boolean
   total?: MetaLifetimeRow
   currency: string | null
 }) {
+  const heading = useRef<HTMLHeadingElement>(null)
   const range = earlierRange ?? liveRange
   const live = lifetimeMode ? total : range?.byCard.get(ad.id)
   const pauseEvents = liveRange?.pausesByCard.get(ad.id) ?? []
@@ -228,7 +233,9 @@ function AdPerformance({
           ) : (
             <span className="reviewed-ad-eyebrow">INSTAGRAM AD</span>
           )}
-          <h3>{ad.title}</h3>
+          <h3 ref={heading} tabIndex={-1}>
+            {ad.title}
+          </h3>
           {ad.objective && <p>{ad.objective}</p>}
           {ad.postUrl && (
             <a
@@ -255,6 +262,20 @@ function AdPerformance({
         </div>
       </div>
       <DeliveryDates ad={ad} events={pauseEvents} />
+      {latestPauseWeek &&
+        !(pauseEvents.length && liveRange?.since === latestPauseWeek.since) && (
+          <button
+            type="button"
+            className="reviewed-pause-week"
+            onClick={() => {
+              onSelectWeek(latestPauseWeek)
+              heading.current?.focus({ preventScroll: true })
+            }}
+          >
+            <CalendarDays size={15} aria-hidden="true" />
+            중단된 주 보기
+          </button>
+        )}
       <div className="reviewed-ad-period">
         <CalendarDays size={14} aria-hidden="true" />
         {lifetimeMode
@@ -544,6 +565,13 @@ export default function ReviewedDashboard({
               liveRange={liveRange}
               lifetimeMode={lifetimeMode}
               total={byId.get(ad.id)}
+              latestPauseWeek={ranges.find((range) =>
+                range.pausesByCard.has(ad.id),
+              )}
+              onSelectWeek={(week) => {
+                setMode('week')
+                setRange(week.key)
+              }}
               earlierRange={
                 liveRange &&
                 (ad.deliveryStatus === 'paused' ||
