@@ -11,6 +11,7 @@ import {
   STAGE_LABELS,
   type Inquiry,
   type InquiryInput,
+  type InquiryListRow,
   type InquirySummaryRow,
 } from '../src/lib/inquiry-types'
 
@@ -65,18 +66,18 @@ function textField(value: unknown, max: number) {
     ? value
     : invalid()
 }
+function isInquiryDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false
+  const date = new Date(value + 'T00:00:00Z')
+  return (
+    Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+  )
+}
+
 function inputFrom(raw: Record<string, unknown>): InquiryInput {
   const firstDate = raw.firstDate
-  if (firstDate !== null) {
-    if (typeof firstDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate))
-      return invalid()
-    const date = new Date(firstDate + 'T00:00:00Z')
-    if (
-      !Number.isFinite(date.getTime()) ||
-      date.toISOString().slice(0, 10) !== firstDate
-    )
-      return invalid()
-  }
+  if (firstDate !== null && !isInquiryDate(firstDate)) return invalid()
   const adId = raw.adId ?? null
   if (
     adId !== null &&
@@ -136,6 +137,41 @@ export async function listInquiries(env: Env): Promise<Inquiry[]> {
     `SELECT ${columns} FROM inquiries ORDER BY created_at DESC,rowid DESC`,
   ).all<InquiryRow>()
   return Promise.all(results.map((row) => itemFrom(row, env)))
+}
+
+function displayCategory<T extends string>(
+  value: unknown,
+  labels: Record<T, string>,
+): T | null {
+  return typeof value === 'string' && Object.hasOwn(labels, value)
+    ? (value as T)
+    : null
+}
+
+export async function publicInquiryList(db: Env['DB']) {
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT first_date AS firstDate, product, branch, channel, source, assignee, stage
+       FROM inquiries ORDER BY created_at DESC, rowid DESC`,
+      )
+      .all<InquiryListRow>()
+    const rows: InquiryListRow[] = results.map((row) => ({
+      firstDate: isInquiryDate(row.firstDate) ? row.firstDate : null,
+      product: displayCategory(row.product, PRODUCT_LABELS),
+      branch: displayCategory(row.branch, BRANCH_LABELS),
+      channel: displayCategory(row.channel, CHANNEL_LABELS),
+      source: displayCategory(row.source, SOURCE_LABELS),
+      assignee: displayCategory(row.assignee, ASSIGNEE_LABELS),
+      stage: displayCategory(row.stage, STAGE_LABELS),
+    }))
+    return Response.json({ rows }, { headers: { 'Cache-Control': 'no-store' } })
+  } catch {
+    return Response.json(
+      { error: { code: 'inquiries_unavailable' } },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
 }
 
 export async function publicInquirySummary(db: Env['DB']) {

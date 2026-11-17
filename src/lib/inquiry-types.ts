@@ -70,3 +70,14 @@ export type InquirySummaryRow = Pick<
   InquiryInput,
   'product' | 'branch' | 'channel' | 'stage'
 > & { count: number }
+
+export type InquiryListRow = {
+  [K in
+    | 'firstDate'
+    | 'product'
+    | 'branch'
+    | 'channel'
+    | 'source'
+    | 'assignee'
+    | 'stage']: InquiryInput[K] | null
+}

@@ -168,6 +168,20 @@
   padding: 0 23px 12px;
   margin: 0;
 }
+.iq-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.iq-table-scroll:focus-visible {
+  outline-offset: -3px;
+}
+.iq-scroll-hint {
+  margin: 0;
+  padding: 0 16px 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
 .iq-table {
   width: 100%;
   border-collapse: collapse;
@@ -198,27 +212,14 @@
 .iq-table tbody :is(th, td) {
   vertical-align: middle;
   padding: 12px 9px;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 .iq-table tbody th {
   min-width: 105px;
   max-width: 190px;
   font-weight: 600;
-}
-.iq-table tbody th strong {
-  font-weight: 650;
-}
-.iq-table tbody small {
-  display: block;
-  max-width: 190px;
-  font-size: 11px;
-  margin-top: 4px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--muted-foreground);
-}
-.iq-mobile-label {
-  display: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .iq-stage {
   display: inline-block;
@@ -245,6 +246,14 @@
 }
 .iq-owner {
   word-break: keep-all;
+}
+.iq-status-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.iq-status-cell .iq-stage {
+  white-space: nowrap;
 }
 .iq-edit {
   min-width: 44px;
@@ -486,62 +495,14 @@
     padding-inline: 16px;
     grid-template-columns: 1fr 1fr 1.3fr;
   }
-  .iq-table,
-  .iq-table tbody {
-    display: block;
+  .iq-table :is(th, td):first-child {
+    padding-inline-start: 16px;
   }
-  .iq-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    clip-path: inset(50%);
-    overflow: hidden;
-  }
-  .iq-table tbody tr {
-    display: grid;
-    position: relative;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 14px;
-    padding: 14px 17px 16px;
-    border-top: 1px solid var(--border);
-  }
-  .iq-table tbody tr :is(th, td),
-  .iq-table tbody tr :is(th, td):first-child,
-  .iq-table tbody tr :is(th, td):last-child {
-    padding: 0;
-    min-width: 0;
-    max-width: none;
+  .iq-table :is(th, td):last-child {
+    padding-inline-end: 16px;
   }
   .iq-table tbody th {
-    grid-column: 1/-1;
-    padding-right: 62px !important;
-    min-height: 36px;
-  }
-  .iq-table tbody th > small {
-    display: inline-block;
-    margin: 0 0 0 8px;
-  }
-  .iq-table tbody td {
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
-    flex-wrap: wrap;
-  }
-  .iq-table tbody td > small {
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-  }
-  .iq-table tbody td:last-child {
-    position: absolute;
-    top: 7px;
-    right: 10px;
-  }
-  .iq-mobile-label {
-    display: inline;
-    font-size: 11px;
-    color: #57685a;
-    white-space: nowrap;
+    min-width: auto;
   }
 }
 @container inquiries (max-width: 510px) {
@@ -559,9 +520,6 @@
   }
   .iq-filters label:last-child {
     grid-column: 1/-1;
-  }
-  .iq-table tbody tr {
-    gap: 8px;
   }
 }
 @media (max-width: 540px) {

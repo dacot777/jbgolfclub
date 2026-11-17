@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import InquirySummaryList from './inquiry-summary-list'
 import { activateStaffDevice, readStaffSession } from '@/lib/staff-device'
 import type { ReviewedAd } from '@/lib/reviewed-performance-types'
 import '@/admin-analytics.css'
@@ -309,37 +308,36 @@ export default function StaffWorkspace({
                   문의·상담 현황<span>.</span>
                 </h1>
                 <p className="page-description">
-                  {csrf
-                    ? '문의가 들어온 채널과 유입 경로, 인계 담당자를 기록합니다.'
-                    : '관심 상품, 지점, 문의 채널과 진행 상태가 같은 문의를 한 줄로 모았습니다.'}
+                  최근에 기록한 문의부터 접수일, 유입 경로, 인계 담당자와 진행
+                  상태를 확인할 수 있습니다.
                 </p>
               </div>
               {disconnectButton}
             </section>
-            {csrf ? (
-              <InquiryWorkspace csrfToken={csrf} onUnauthorized={expired} />
-            ) : (
-              <>
-                <InquirySummaryList />
-                <details className="mt-5 max-w-2xl text-sm">
-                  <summary className="w-fit cursor-pointer py-3 font-medium">
-                    담당자 도구
-                  </summary>
-                  <div className="grid gap-3 py-2">
-                    <p>
-                      업무용 브라우저를 연결하면 개별 문의를 열고 수정할 수
-                      있습니다.
-                    </p>
-                    {sessionNotice}
-                    <StaffDeviceAccess
-                      workspace="inquiries"
-                      onConnected={changeSession}
-                      onCheck={check}
-                      checking={checking}
-                    />
-                  </div>
-                </details>
-              </>
+            <InquiryWorkspace
+              key={revision}
+              csrfToken={csrf}
+              onUnauthorized={expired}
+            />
+            {!csrf && (
+              <details className="mt-5 max-w-2xl text-sm">
+                <summary className="w-fit cursor-pointer py-3 font-medium">
+                  담당자 도구
+                </summary>
+                <div className="grid gap-3 py-2">
+                  <p>
+                    연결된 업무용 브라우저에서는 고객 이름, 연락처, 상담 메모를
+                    확인하고 문의를 수정할 수 있습니다.
+                  </p>
+                  {sessionNotice}
+                  <StaffDeviceAccess
+                    workspace="inquiries"
+                    onConnected={changeSession}
+                    onCheck={check}
+                    checking={checking}
+                  />
+                </div>
+              </details>
             )}
           </div>
         )}

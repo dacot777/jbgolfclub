@@ -2,9 +2,15 @@
 
 The supplied [Apple reference](../DESIGN.md) guides the site. A compact black navigation bar, a white context strip and a centered content column accompany the original JB Academy shield. The surface is #f5f5f7, cards are white with 18px corners, body text is #1d1d1f, and controls use #0066cc with a #0071e3 focus outline. System fonts and locally hosted Korean type keep text readable without external font requests. Status colors keep their delivery or warning meaning.
 
+Give mobile and desktop users the same data and actions for their access level. Use wrapping, local scrolling or expandable navigation so that narrow screens can reach every item.
+
 ## Content calendar
 
-The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Staff select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and customer inquiries require a registered staff browser.
+The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Staff select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and customer details require a registered staff browser.
+
+## Inquiry list
+
+PC and mobile use one table with the same column headings, ordering, counts and one row per inquiry. On smaller screens the table scrolls horizontally inside its panel. Customer details and editing are available in the staff view.
 
 ## States and data
 

@@ -1,5 +1,9 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import type { Inquiry, InquiryInput } from '../src/lib/inquiry-types'
+import {
+  PRODUCT_LABELS,
+  type Inquiry,
+  type InquiryInput,
+} from '../src/lib/inquiry-types'
 
 test.use({ baseURL: 'http://127.0.0.1:5174', hasTouch: true })
 
@@ -7,10 +11,41 @@ const demoAd = { id: 'synthetic-published-card', title: '검증 캠프 광고' }
 const sessionToken = 'synthetic-inquiry-session-csrf'
 const deviceGrant = 'T'.repeat(43)
 
+type DatedProduct = Pick<InquiryInput, 'firstDate' | 'product'>
+
+function editLabel(row: DatedProduct) {
+  return (
+    (row.firstDate ?? '미확인') +
+    ' ' +
+    PRODUCT_LABELS[row.product] +
+    ' 문의 수정'
+  )
+}
+
+function editableRow(page: Page, row: DatedProduct) {
+  return page.getByRole('row').filter({
+    has: page.getByRole('button', { name: editLabel(row), exact: true }),
+  })
+}
+
 async function expectTotal(summary: Locator, count: number) {
   await expect(summary).toHaveText(
     new RegExp('^총 문의\\s*' + count + '\\s*건$'),
   )
+}
+
+async function expectVisibleTableHead(table: Locator) {
+  await expect(table.locator('thead')).toBeVisible()
+  expect(
+    await table.locator('thead').evaluate((head) => {
+      const rect = head.getBoundingClientRect()
+      return (
+        rect.height > 20 &&
+        rect.width > 120 &&
+        getComputedStyle(head).clipPath === 'none'
+      )
+    }),
+  ).toBe(true)
 }
 
 async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
@@ -20,9 +55,22 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   let analyticsEvents = 0
   const deletionRequests: string[] = []
   const records = new Map<string, Inquiry>()
-  await page.route('**/api/inquiries/summary', (route) => {
+  await page.route('**/api/inquiries/list', (route) => {
     expect(route.request().method()).toBe('GET')
-    return route.fulfill({ json: { rows: [] } })
+    const rows = [...records.values()]
+      .reverse()
+      .map(
+        ({ firstDate, product, branch, channel, source, assignee, stage }) => ({
+          firstDate,
+          product,
+          branch,
+          channel,
+          source,
+          assignee,
+          stage,
+        }),
+      )
+    return route.fulfill({ json: { rows } })
   })
   await page.route('**/api/analytics/event', (route) => {
     analyticsEvents++
@@ -123,8 +171,144 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   }
 }
 
+test('모바일과 PC의 문의 목록은 담당자 연결 여부에 관계없이 열 제목·행 내용·순서·필터가 같다', async ({
+  context,
+}) => {
+  const original: Inquiry = {
+    id: '562f664e-7b31-49fc-ac4e-5c867567f26d',
+    version: 1,
+    firstDate: '2026-01-10',
+    branch: 'hanam',
+    product: 'camp',
+    channel: 'kakao',
+    source: 'unknown',
+    adId: null,
+    stage: 'received',
+    assignee: 'unassigned',
+    name: '비공개 테스트 접수',
+    contact: '비공개 테스트 연락처',
+    note: '비공개 테스트 메모',
+  }
+  const newer: Inquiry = {
+    ...original,
+    id: 'd7bceeb0-a730-41f7-93fb-2ee09967ab74',
+    firstDate: '2026-01-12',
+    source: 'instagram_ad',
+    adId: demoAd.id,
+    branch: 'cheongdam',
+    product: 'lesson',
+    stage: 'consulting',
+    assignee: 'kim_yeoul',
+    name: '테스트 두 번째 접수',
+  }
+  const duplicate = {
+    ...newer,
+    id: '87169e84-a8d6-4b6b-a5e8-46c66691950c',
+    name: '테스트 세 번째 접수',
+  }
+  const headers = [
+    '접수일',
+    '관심 상품',
+    '지점',
+    '문의 채널',
+    '유입 경로',
+    '담당자',
+    '진행 상태',
+  ]
+  let firstRows: string[][] | undefined
+  for (const { width, staff } of [
+    { width: 390, staff: false },
+    { width: 1440, staff: true },
+    { width: 1440, staff: false },
+    { width: 390, staff: true },
+  ]) {
+    const page = await context.newPage()
+    const api = await mockWorkspace(page, staff)
+    for (const row of [original, newer, duplicate]) api.records.set(row.id, row)
+    await page.setViewportSize({ width, height: 850 })
+    const sessionRead = page.waitForResponse('**/api/staff/session')
+    await page.goto('/#inquiries')
+    await sessionRead
+    if (staff)
+      await expect(
+        page.getByRole('button', { name: '새 문의', exact: true }),
+      ).toBeVisible()
+    await expectTotal(page.getByLabel('전체 문의 현황'), 3)
+    const table = page.getByRole('table', { name: '문의 목록 표', exact: true })
+    await expectVisibleTableHead(table)
+    await expect(table.getByRole('columnheader')).toHaveText(headers)
+    if (width === 390) {
+      const region = page.getByRole('region', {
+        name: '문의 목록 표',
+        exact: true,
+      })
+      expect(
+        await region.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth
+          const lastHeading = element.querySelector('th:last-child')!
+          const showsLastColumn =
+            lastHeading.getBoundingClientRect().right <=
+            element.getBoundingClientRect().right + 1
+          const scrolled = element.scrollLeft > 0
+          element.scrollLeft = 0
+          return scrolled && showsLastColumn
+        }),
+      ).toBe(true)
+    }
+    const body = table.locator('tbody tr')
+    await expect(body).toHaveCount(3)
+    const rows = await body.evaluateAll((elements) =>
+      elements.map((row) =>
+        Array.from(row.querySelectorAll('th,td'), (cell) => {
+          const copy = cell.cloneNode(true) as HTMLElement
+          copy.querySelectorAll('button').forEach((button) => button.remove())
+          return copy.textContent?.trim() ?? ''
+        }),
+      ),
+    )
+    expect(rows[0]).toEqual(rows[1])
+    expect(rows[2]).not.toEqual(rows[0])
+    expect(rows[0]).toEqual(
+      expect.arrayContaining([
+        '레슨',
+        '청담',
+        '카카오채널',
+        '인스타그램 광고',
+        '김여울 대리님',
+        '상담 중',
+      ]),
+    )
+    expect(rows[0][0]).toContain('2026')
+    if (firstRows) expect(rows).toEqual(firstRows)
+    else firstRows = rows
+    await page.getByRole('button', { name: '필터', exact: true }).click()
+    await page
+      .getByLabel('담당자 필터', { exact: true })
+      .selectOption('kim_yeoul')
+    await expect(body).toHaveCount(2)
+    await page.getByLabel('담당자 필터', { exact: true }).selectOption('')
+    await page.getByLabel('상품 필터', { exact: true }).selectOption('camp')
+    await expect(body).toHaveCount(1)
+    await expect(body).toContainText('하남')
+    await expect(page.getByLabel('광고 필터', { exact: true })).toHaveCount(
+      staff ? 1 : 0,
+    )
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+    if (!staff) {
+      for (const secret of [original.name, original.contact, original.note])
+        await expect(page.locator('body')).not.toContainText(secret)
+      expect(api.reads()).toBe(0)
+    }
+    await page.close()
+  }
+})
+
 for (const width of [390, 1440]) {
-  test(`${width}px 처음 쓰는 브라우저에서 문의 집계를 바로 열고 새로고침한다`, async ({
+  test(`${width}px 처음 쓰는 브라우저에서 문의 목록을 바로 열고 새로고침한다`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 850 })
@@ -137,27 +321,31 @@ for (const width of [390, 1440]) {
       await pendingSession
       await route.fulfill({ json: { authenticated: false } })
     })
-    const summaryRows = [
+    const rows = [
       {
         product: 'camp',
         branch: 'hanam',
         channel: 'kakao',
         stage: 'received',
-        count: 3,
+        firstDate: '2026-01-10',
+        source: 'instagram_post',
+        assignee: 'kim_uihyeon',
       },
       {
         product: 'lesson',
         branch: null,
         channel: 'instagram_dm',
         stage: 'consulting',
-        count: 2,
+        firstDate: null,
+        source: 'unknown',
+        assignee: 'unassigned',
       },
     ]
-    let summaryReads = 0
-    await page.route('**/api/inquiries/summary', (route) => {
+    let listReads = 0
+    await page.route('**/api/inquiries/list', (route) => {
       expect(route.request().method()).toBe('GET')
-      summaryReads++
-      return route.fulfill({ json: { rows: summaryRows } })
+      listReads++
+      return route.fulfill({ json: { rows } })
     })
     const restrictedRequests: string[] = []
     page.on('request', (request) => {
@@ -170,26 +358,33 @@ for (const width of [390, 1440]) {
       }
     })
     await page.goto('/#inquiries')
-    const table = page.getByRole('table', { name: '조건별 문의 건수' })
+    const table = page.getByRole('table', { name: '문의 목록 표', exact: true })
     const total = page.getByLabel('전체 문의 현황')
     try {
       await expect(table).toBeVisible()
     } finally {
       releaseSession!()
     }
-    await expectTotal(total, 5)
+    await expectTotal(total, 2)
     const campRow = table.getByRole('row').filter({ hasText: '전지훈련' })
-    for (const value of ['하남', '카카오채널', '문의 접수', '3']) {
+    for (const value of [
+      '하남',
+      '카카오채널',
+      '문의 접수',
+      '김의현 원장님',
+      '인스타그램 게시물',
+    ]) {
       await expect(campRow).toContainText(value)
     }
     const lessonRow = table.getByRole('row').filter({ hasText: '레슨' })
-    for (const value of ['인스타그램 DM', '상담 중', '2']) {
+    for (const value of ['인스타그램 DM', '상담 중', '미배정', '미확인']) {
       await expect(lessonRow).toContainText(value)
     }
-    await expect(table.getByRole('columnheader')).toHaveCount(5)
+    await expect(table.getByRole('columnheader')).toHaveCount(7)
+    await expectVisibleTableHead(table)
     await expect(
       table.getByRole('columnheader', {
-        name: /이름|연락처|메모|고객 구분|담당자|날짜/,
+        name: /이름|연락처|메모|고객 구분/,
       }),
     ).toHaveCount(0)
     await expect(
@@ -201,22 +396,67 @@ for (const width of [390, 1440]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true)
-    const readsBeforeReload = summaryReads
+    const readsBeforeReload = listReads
     await page.reload()
-    await expectTotal(total, 5)
+    await expectTotal(total, 2)
     await expect(campRow).toBeVisible()
-    expect(summaryReads).toBeGreaterThan(readsBeforeReload)
+    expect(listReads).toBeGreaterThan(readsBeforeReload)
     expect(restrictedRequests).toEqual([])
     expect(api.reads()).toBe(0)
   })
 }
 
-test('공개 문의 집계 조회 오류는 0건으로 표시하지 않고 다시 불러온 결과만 빈 상태로 표시한다', async ({
+for (const staff of [false, true]) {
+  test(`${staff ? '담당자 PC' : '일반 휴대폰'}에서 열어 둔 문의 목록은 새 문의를 반영한다`, async ({
+    page,
+  }) => {
+    const api = await mockWorkspace(page, staff)
+    await page.setViewportSize({ width: staff ? 1440 : 390, height: 850 })
+    await page.clock.install()
+    await page.goto('/#inquiries')
+    if (staff)
+      await expect(
+        page.getByRole('button', { name: '새 문의', exact: true }),
+      ).toBeVisible()
+    const total = page.getByLabel('전체 문의 현황')
+    await expectTotal(total, 0)
+    const incoming: Inquiry = {
+      id: '5430f496-e602-47d7-a95a-f93836fd5577',
+      version: 1,
+      firstDate: '2026-01-14',
+      product: 'lesson',
+      branch: 'seohyeon',
+      channel: 'phone',
+      source: 'search',
+      adId: null,
+      stage: 'received',
+      assignee: 'unassigned',
+      name: '',
+      contact: '',
+      note: '',
+    }
+    api.records.set(incoming.id, incoming)
+    await page.clock.fastForward(61_000)
+    await expectTotal(total, 1)
+    await expect(page.getByRole('table').getByRole('row').last()).toContainText(
+      '서현',
+    )
+    api.records.delete(incoming.id)
+    await page.clock.fastForward(2000)
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event('visibilitychange')),
+    )
+    await expectTotal(total, 0)
+    if (!staff) expect(api.reads()).toBe(0)
+  })
+}
+
+test('공개 문의 목록 조회 오류는 0건으로 표시하지 않고 다시 불러온 결과만 빈 상태로 표시한다', async ({
   page,
 }) => {
   await mockWorkspace(page, false)
   let unavailable = true
-  await page.route('**/api/inquiries/summary', (route) =>
+  await page.route('**/api/inquiries/list', (route) =>
     unavailable
       ? route.fulfill({ status: 503, json: { error: { code: 'unavailable' } } })
       : route.fulfill({ json: { rows: [] } }),
@@ -238,7 +478,7 @@ test('공개 문의 집계 조회 오류는 0건으로 표시하지 않고 다�
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-test('문의 집계에서 담당자로 연결하면 원래 목록이 열리고 로그아웃하면 다시 집계로 돌아간다', async ({
+test('같은 문의 목록에서 담당자 연결 상태에 따라 관리 기능만 열린다', async ({
   page,
 }) => {
   const api = await mockWorkspace(page, false)
@@ -361,7 +601,7 @@ test('캘린더에서 문의·상담으로 이동하면 다른 탭에서 연결�
   api.setSignedIn(true)
   await page.getByRole('link', { name: '문의·상담', exact: true }).click()
   await expect(
-    page.getByRole('row', { name: /검증용 레슨 문의/ }),
+    editableRow(page, { firstDate: null, product: 'lesson' }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: '필터', exact: true }),
@@ -496,20 +736,16 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     ).toBe(true)
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(
-      page.getByRole('button', { name: input.name + ' 수정', exact: true }),
+      page.getByRole('button', { name: editLabel(input), exact: true }),
     ).toBeVisible()
-    await expect(
-      page.getByRole('row', { name: new RegExp(input.name) }),
-    ).toContainText(customerLabel)
+    await expect(editableRow(page, input)).not.toContainText(customerLabel)
   }
   const saved = [...api.records.values()]
   expect(saved).toHaveLength(2)
   expect(saved[0]).toMatchObject({ ...camp, version: 1 })
   expect(saved[1]).toMatchObject({ ...lesson, version: 1 })
 
-  await page
-    .getByRole('button', { name: camp.name + ' 수정', exact: true })
-    .click()
+  await page.getByRole('button', { name: editLabel(camp), exact: true }).click()
   await expect(
     page.getByRole('radio', { name: '김여울 대리님', exact: true }),
   ).toBeChecked()
@@ -537,9 +773,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   const beforeReload = api.reads()
   await page.reload()
   await expect.poll(() => api.reads()).toBeGreaterThan(beforeReload)
-  await expect(
-    page.getByRole('row').filter({ hasText: camp.name }),
-  ).toContainText('청담')
+  await expect(editableRow(page, camp)).toContainText('청담')
   const adFilter = page.getByLabel('광고 필터', { exact: true })
   await expect(adFilter).toBeHidden()
   await page.getByRole('button', { name: '필터', exact: true }).click()
@@ -549,17 +783,17 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     '필터 결과 1건',
   )
   await expect(
-    page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
+    page.getByRole('button', { name: editLabel(lesson), exact: true }),
   ).toHaveCount(0)
   await adFilter.selectOption('')
   await page
     .getByLabel('담당자 필터', { exact: true })
     .selectOption('kim_uihyeon')
   await expect(
-    page.getByRole('button', { name: camp.name + ' 수정', exact: true }),
+    page.getByRole('button', { name: editLabel(camp), exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
+    page.getByRole('button', { name: editLabel(lesson), exact: true }),
   ).toHaveCount(0)
   const filteredSummary = page.getByLabel('선택한 조건의 문의 현황')
   await expect(filteredSummary).toHaveText('필터 결과 1건')
@@ -568,16 +802,16 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     .selectOption('unassigned')
   await page.getByLabel('상품 필터', { exact: true }).selectOption('lesson')
   await expect(
-    page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
+    page.getByRole('button', { name: editLabel(lesson), exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: camp.name + ' 수정', exact: true }),
+    page.getByRole('button', { name: editLabel(camp), exact: true }),
   ).toHaveCount(0)
   await page.getByRole('button', { name: '필터 적용 중' }).click()
   await expect(adFilter).toBeHidden()
   await expect(filteredSummary).toHaveText('필터 결과 1건')
   await page
-    .getByRole('button', { name: lesson.name + ' 수정', exact: true })
+    .getByRole('button', { name: editLabel(lesson), exact: true })
     .click()
   await expect(
     page.getByRole('combobox', { name: '문의 채널', exact: true }),
@@ -678,11 +912,13 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/#inquiries')
   const total = page.getByLabel('전체 문의 현황')
-  const targetRow = page.getByRole('row').filter({ hasText: legacy.name })
+  const targetRow = editableRow(page, legacy).filter({
+    hasText: '신청·등록 완료',
+  })
   await expectTotal(total, 2)
   await expect(targetRow).toContainText('미지정')
   await targetRow
-    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .getByRole('button', { name: editLabel(legacy), exact: true })
     .click()
   const branch = page.getByRole('group', { name: '지점', exact: true })
   const customer = page.getByRole('group', { name: '문의 대상', exact: true })
@@ -697,9 +933,9 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
   await branch.getByRole('radio', { name: '서현' }).check()
   await page.getByRole('button', { name: '저장', exact: true }).click()
   await expect(targetRow).toContainText('서현')
-  await expect(targetRow).toContainText('주니어')
+  await expect(targetRow).not.toContainText('주니어')
   await targetRow
-    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .getByRole('button', { name: editLabel(legacy), exact: true })
     .click()
   await expect(branch.getByRole('radio', { name: '서현' })).toBeChecked()
   await expect(customer.getByRole('radio', { name: '주니어' })).toBeChecked()
@@ -711,7 +947,7 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
   expect(api.records.get(legacy.id)?.customerType).toBeNull()
   expect(api.records.get(legacy.id)?.nextAction).toBe('기존 보존 기록')
   await targetRow
-    .getByRole('button', { name: legacy.name + ' 수정', exact: true })
+    .getByRole('button', { name: editLabel(legacy), exact: true })
     .click()
   const remove = page.getByRole('button', { name: '문의 삭제', exact: true })
   const confirmation = page.getByRole('alertdialog', { name: '문의 삭제 확인' })
@@ -754,7 +990,5 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
   await page.reload()
   await expectTotal(total, 1)
   await expect(targetRow).toHaveCount(0)
-  await expect(
-    page.getByRole('row').filter({ hasText: remaining.name }),
-  ).toContainText('하남')
+  await expect(editableRow(page, remaining)).toContainText('하남')
 })

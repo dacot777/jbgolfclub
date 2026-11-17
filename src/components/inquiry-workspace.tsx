@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Check,
-  ClipboardList,
-  MapPin,
-  Pencil,
-  Plus,
-  SlidersHorizontal,
-  Trash2,
-  UserRound,
-  X,
-} from 'lucide-react'
+import { Check, MapPin, Pencil, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { AlertDialog } from 'radix-ui'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -25,6 +15,9 @@ import {
   type InquiryInput,
 } from '@/lib/inquiry-types'
 import type { MetaAdCard } from '@/lib/meta-ads-types'
+import InquiryList from './inquiry-list'
+import { usePublicInquiryList } from './use-public-inquiry-list'
+import { useInquiryRefresh } from './use-inquiry-refresh'
 import '@/inquiry-workspace.css'
 
 type AdOption = Pick<MetaAdCard, 'id' | 'title'>
@@ -159,6 +152,7 @@ export default function InquiryWorkspace({
   onUnauthorized: () => void
 }) {
   const [items, setItems] = useState<Inquiry[] | null>(null)
+  const publicList = usePublicInquiryList(!csrfToken || !items)
   const [ads, setAds] = useState<AdOption[]>([])
   const [listError, setListError] = useState(false)
   const [adError, setAdError] = useState(false)
@@ -168,14 +162,11 @@ export default function InquiryWorkspace({
   const [problem, setProblem] = useState('')
   const [conflict, setConflict] = useState(false)
   const [notice, setNotice] = useState('')
-  const [productFilter, setProductFilter] = useState('')
-  const [assigneeFilter, setAssigneeFilter] = useState('')
-  const [adFilter, setAdFilter] = useState('')
-  const [filtersOpen, setFiltersOpen] = useState(false)
   const returnFocus = useRef<HTMLElement | null>(null)
   const newButton = useRef<HTMLButtonElement>(null)
   const session = useRef<AbortController | null>(null)
   const listRequest = useRef(0)
+  const loadingList = useRef(0)
   const writePending = useRef(false)
   const onUnauthorizedRef = useRef(onUnauthorized)
   useEffect(() => {
@@ -199,6 +190,7 @@ export default function InquiryWorkspace({
     const current = session.current
     if (!current) return
     const request = ++listRequest.current
+    loadingList.current = request
     try {
       const response = await fetch(collectionPath, {
         ...noStore,
@@ -221,6 +213,8 @@ export default function InquiryWorkspace({
     } catch {
       if (!current.signal.aborted && request === listRequest.current)
         setListError(true)
+    } finally {
+      if (loadingList.current === request) loadingList.current = 0
     }
   }, [endSession])
 
@@ -250,6 +244,7 @@ export default function InquiryWorkspace({
   }, [])
 
   useEffect(() => {
+    if (!csrfToken) return
     const current = new AbortController()
     session.current = current
     setItems(null)
@@ -259,25 +254,15 @@ export default function InquiryWorkspace({
     setNotice('')
     void load()
     void loadAds()
-    const visible = () => {
-      if (document.visibilityState === 'visible' && !writePending.current)
-        void load()
-    }
-    document.addEventListener('visibilitychange', visible)
     return () => {
       current.abort()
-      document.removeEventListener('visibilitychange', visible)
     }
   }, [csrfToken, load, loadAds])
 
-  const matches = (items ?? []).filter(
-    (row) =>
-      (!productFilter || row.product === productFilter) &&
-      (!assigneeFilter || row.assignee === assigneeFilter) &&
-      (!adFilter ||
-        (adFilter === 'unlinked' ? !row.adId : row.adId === adFilter)),
-  )
-  const hasFilters = !!(productFilter || assigneeFilter || adFilter)
+  useInquiryRefresh(!!csrfToken, () => {
+    if (!edit && !writePending.current && !loadingList.current) void load()
+  })
+
   const adNames = new Map(ads.map((ad) => [ad.id, ad.title]))
   const linkedOptions = new Map(adNames)
   for (const item of items ?? [])
@@ -389,10 +374,11 @@ export default function InquiryWorkspace({
       if (!isItem(item) || item.id !== edit.id) throw new Error('format')
       if (current.signal.aborted) return
       ++listRequest.current
-      setItems((records) => [
-        item,
-        ...(records ?? []).filter((row) => row.id !== item.id),
-      ])
+      setItems((records) => {
+        if (records?.some((row) => row.id === item.id))
+          return records.map((row) => (row.id === item.id ? item : row))
+        return [item, ...(records ?? [])]
+      })
       setListError(false)
       setEdit(null)
       setNotice('문의 기록을 저장했습니다.')
@@ -436,33 +422,29 @@ export default function InquiryWorkspace({
   }
 
   return (
-    <section className="iq-workspace" aria-label="문의 관리">
-      <section className="iq-panel" aria-labelledby="iq-list-title">
-        <header className="iq-heading">
-          <div className="iq-list-title">
-            <h2 id="iq-list-title">문의 목록</h2>
-            {items && (
-              <span
-                className="iq-list-count"
-                role="status"
-                aria-label="전체 문의 현황"
-              >
-                총 문의 {items.length.toLocaleString('ko-KR')}건
-              </span>
-            )}
-          </div>
-          {items && (
-            <div className="iq-list-actions">
-              <button
-                type="button"
-                className="iq-secondary"
-                aria-expanded={filtersOpen}
-                aria-controls="iq-filter-fields"
-                onClick={() => setFiltersOpen((open) => !open)}
-              >
-                <SlidersHorizontal size={16} aria-hidden="true" />
-                필터{hasFilters && ' 적용 중'}
-              </button>
+    <section
+      className="iq-workspace"
+      aria-label={csrfToken ? '문의 관리' : '문의 현황'}
+    >
+      {csrfToken && listError && !items && (
+        <p className="iq-feedback" role="alert">
+          담당자 도구를 불러오지 못했습니다.{' '}
+          <button type="button" onClick={() => void load()}>
+            다시 확인
+          </button>
+        </p>
+      )}
+      {csrfToken && items ? (
+        <InquiryList
+          rows={items}
+          error={listError}
+          onRetry={() => void load()}
+          staff={{
+            rowId: (row) => row.id,
+            adId: (row) => row.adId,
+            ads: linkedOptions,
+            notice,
+            newAction: (
               <button
                 ref={newButton}
                 className="iq-primary"
@@ -471,193 +453,31 @@ export default function InquiryWorkspace({
               >
                 <Plus size={17} aria-hidden="true" />새 문의
               </button>
-            </div>
-          )}
-        </header>
-        {listError && (
-          <div className="iq-feedback" role="alert">
-            문의 목록을 불러오지 못했습니다.{' '}
-            <button onClick={() => void load()}>다시 불러오기</button>
-          </div>
-        )}
-        {!items && !listError && (
-          <p className="iq-empty" role="status">
-            문의 기록을 불러오는 중입니다.
-          </p>
-        )}
-        {items && (
-          <>
-            <div
-              id="iq-filter-fields"
-              className="iq-filters"
-              hidden={!filtersOpen}
-            >
-              <label>
-                관심 상품
-                <select
-                  aria-label="상품 필터"
-                  value={productFilter}
-                  onChange={(e) => setProductFilter(e.target.value)}
-                >
-                  <option value="">전체 상품</option>
-                  {options(PRODUCT_LABELS)}
-                </select>
-              </label>
-              <label>
-                담당자
-                <select
-                  aria-label="담당자 필터"
-                  value={assigneeFilter}
-                  onChange={(e) => setAssigneeFilter(e.target.value)}
-                >
-                  <option value="">전체 담당자</option>
-                  {options(ASSIGNEE_LABELS)}
-                </select>
-              </label>
-              <label>
-                연결된 광고
-                <select
-                  aria-label="광고 필터"
-                  value={adFilter}
-                  onChange={(e) => setAdFilter(e.target.value)}
-                >
-                  <option value="">전체 광고</option>
-                  <option value="unlinked">연결 안 됨</option>
-                  {[...linkedOptions].map(([id, title]) => (
-                    <option key={id} value={id}>
-                      {title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {hasFilters && (
-              <p
-                className="iq-filter-result"
-                role="status"
-                aria-label="선택한 조건의 문의 현황"
+            ),
+            editAction: (row) => (
+              <button
+                className="iq-edit"
+                type="button"
+                aria-label={[
+                  row.firstDate ?? '미확인',
+                  PRODUCT_LABELS[row.product],
+                  '문의 수정',
+                ].join(' ')}
+                onClick={(e) => openEditor(e.currentTarget, row)}
               >
-                필터 결과 {matches.length.toLocaleString('ko-KR')}건
-              </p>
-            )}
-            {notice && (
-              <p className="iq-notice" role="status">
-                <Check size={16} aria-hidden="true" />
-                {notice}
-              </p>
-            )}
-            {matches.length ? (
-              <table className="iq-table">
-                <caption className="sr-only">
-                  관심 상품, 지점, 문의 채널, 유입 경로, 진행 상태와 담당자별
-                  문의 기록
-                </caption>
-                <thead>
-                  <tr>
-                    {[
-                      '문의',
-                      '관심 상품',
-                      '지점',
-                      '문의 채널',
-                      '유입 경로',
-                      '진행 상태',
-                      '담당자',
-                      '수정',
-                    ].map((h) => (
-                      <th key={h} scope="col">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map((row) => {
-                    const title =
-                      row.name || PRODUCT_LABELS[row.product] + ' 문의'
-                    return (
-                      <tr key={row.id}>
-                        <th scope="row">
-                          <strong>{title}</strong>
-                          <small>
-                            {row.customerType && (
-                              <>{CUSTOMER_TYPE_LABELS[row.customerType]} · </>
-                            )}
-                            {row.firstDate ?? '문의일 미확인'}
-                          </small>
-                        </th>
-                        <td>
-                          <span className="iq-mobile-label">관심 상품</span>
-                          {PRODUCT_LABELS[row.product]}
-                        </td>
-                        <td>
-                          <span className="iq-mobile-label">지점</span>
-                          {row.branch ? BRANCH_LABELS[row.branch] : '미지정'}
-                        </td>
-                        <td>
-                          <span className="iq-mobile-label">문의 채널</span>
-                          {CHANNEL_LABELS[row.channel]}
-                        </td>
-                        <td>
-                          <span className="iq-mobile-label">유입 경로</span>
-                          {SOURCE_LABELS[row.source]}
-                          {row.adId && (
-                            <small>
-                              {adNames.get(row.adId) ?? '기존 연결 광고'}
-                            </small>
-                          )}
-                        </td>
-                        <td>
-                          <span className="iq-mobile-label">진행 상태</span>
-                          <span className={'iq-stage iq-stage-' + row.stage}>
-                            {STAGE_LABELS[row.stage]}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="iq-mobile-label">담당자</span>
-                          <span className="iq-owner">
-                            {ASSIGNEE_LABELS[row.assignee]}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="iq-edit"
-                            type="button"
-                            aria-label={title + ' 수정'}
-                            onClick={(e) => openEditor(e.currentTarget, row)}
-                          >
-                            <Pencil size={15} aria-hidden="true" />
-                            <span>수정</span>
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <div className="iq-empty">
-                <ClipboardList size={26} aria-hidden="true" />
-                <p>
-                  {hasFilters
-                    ? '선택한 조건에 맞는 문의가 없습니다.'
-                    : '아직 등록한 문의가 없습니다.'}
-                </p>
-                {hasFilters && (
-                  <button
-                    onClick={() => {
-                      setProductFilter('')
-                      setAssigneeFilter('')
-                      setAdFilter('')
-                    }}
-                  >
-                    필터 초기화
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </section>
+                <Pencil size={15} aria-hidden="true" />
+                <span>수정</span>
+              </button>
+            ),
+          }}
+        />
+      ) : (
+        <InquiryList
+          rows={publicList.rows}
+          error={publicList.error}
+          onRetry={publicList.refresh}
+        />
+      )}
       {edit && (
         <Dialog
           open
