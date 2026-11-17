@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReviewedPerformanceData } from './reviewed-performance-types'
 
-export function useReviewedPerformance() {
+export function useReviewedPerformance(enabled = true) {
   const [data, setData] = useState<ReviewedPerformanceData | null>(null)
   const [loading, setLoading] = useState(__INSTAGRAM_BACKEND__)
   const [error, setError] = useState('')
@@ -34,7 +34,7 @@ export function useReviewedPerformance() {
     }
   }, [])
   useEffect(() => {
-    void reload()
-  }, [reload])
+    if (enabled) void reload()
+  }, [enabled, reload])
   return { data, loading, error, reload }
 }

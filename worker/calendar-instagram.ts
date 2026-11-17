@@ -153,6 +153,12 @@ export async function calendarInstagramCallback(request: Request, env: Env) {
   }
 }
 
+export function calendarAccountStatusQuery(env: Env) {
+  return env.DB.prepare(
+    'SELECT account,token_expires_at,last_synced_at,sync_error,completed_at FROM calendar_instagram_accounts',
+  )
+}
+
 export async function readCalendarMedia(env: Env, month: string) {
   const [postsResult, grantsResult] = await env.DB.batch([
     env.DB.prepare(
@@ -160,10 +166,18 @@ export async function readCalendarMedia(env: Env, month: string) {
       CASE WHEN thumbnail_url IS NOT NULL OR use_album_child THEN '/api/admin/calendar/instagram/thumbnail/' || id ELSE NULL END AS thumbnailUrl
       FROM calendar_instagram_media WHERE date>=? AND date<=? ORDER BY date,time,id`,
     ).bind(month + '-01', month + '-31'),
-    env.DB.prepare(
-      'SELECT account,token_expires_at,last_synced_at,sync_error,completed_at FROM calendar_instagram_accounts',
-    ),
+    calendarAccountStatusQuery(env),
   ])
+  return {
+    posts: postsResult.results as unknown as CalendarPost[],
+    accounts: calendarAccountStatuses(env, grantsResult.results),
+  }
+}
+
+export function calendarAccountStatuses(
+  env: Env,
+  rows: unknown[],
+): CalendarAccountStatus[] {
   type GrantStatus = {
     account: CalendarAccount
     token_expires_at: number
@@ -171,8 +185,8 @@ export async function readCalendarMedia(env: Env, month: string) {
     sync_error: string | null
     completed_at: number | null
   }
-  const grants = grantsResult.results as GrantStatus[]
-  const accounts: CalendarAccountStatus[] = CALENDAR_ACCOUNTS.map((account) => {
+  const grants = rows as GrantStatus[]
+  return CALENDAR_ACCOUNTS.map((account) => {
     const grant = grants.find((row) => row.account === account)
     let status: CalendarAccountStatus['status']
     if (!configuration({ ...env, INSTAGRAM_ACCOUNT_USERNAME: account }))
@@ -195,5 +209,4 @@ export async function readCalendarMedia(env: Env, month: string) {
         : null,
     }
   })
-  return { posts: postsResult.results as unknown as CalendarPost[], accounts }
 }

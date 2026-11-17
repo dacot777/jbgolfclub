@@ -9,11 +9,15 @@ const ContentCalendar = lazy(() => import('./content-calendar'))
 const InquiryWorkspace = lazy(() => import('./inquiry-workspace'))
 
 function readPublicMonth(month: string, signal: AbortSignal) {
-  return fetch('/api/calendar?month=' + encodeURIComponent(month), {
-    credentials: 'omit',
-    cache: 'no-store',
-    signal,
-  })
+  return fetch(
+    '/api/calendar' +
+      (month === 'latest' ? '/posts' : '?month=' + encodeURIComponent(month)),
+    {
+      credentials: 'omit',
+      cache: 'no-store',
+      signal,
+    },
+  )
 }
 
 function InquiryAccess({

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { build } from 'esbuild'
 import { Miniflare, createFetchMock } from 'miniflare'
 
@@ -31,6 +32,7 @@ test('visitors read published media and plans without revealing editing data or 
     '0011_calendar_instagram',
     '0014_calendar_links',
     '0016_calendar_brands',
+    '0017_instagram_gallery_indexes',
   ]) {
     const sql = await readFile('worker/migrations/' + name + '.sql', 'utf8')
     await db.batch(
@@ -155,7 +157,11 @@ test('visitors read published media and plans without revealing editing data or 
     [],
   )
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
-    for (const path of ['/api/calendar?month=2028-02', reel.thumbnailUrl])
+    for (const path of [
+      '/api/calendar?month=2028-02',
+      '/api/calendar/posts',
+      reel.thumbnailUrl,
+    ])
       assert.equal((await request(path, method)).status, 405)
   }
   assert.equal(
@@ -167,4 +173,99 @@ test('visitors read published media and plans without revealing editing data or 
     .bind(scheduleId)
     .first()
   assert.equal(preserved.note, privateData.note)
+
+  await t.test(
+    'latest shows nine distinct publications per account across dates, including independently registered links',
+    async () => {
+      const addOlder = db.prepare(`INSERT INTO calendar_instagram_media
+      (id,account,kind,title,date,time,permalink,thumbnail_checked_at,seen_at)
+      VALUES(?,'jbgolfacademy','post','Archive post',?,'12:00',?,0,0)`)
+      const addLink = db.prepare(`INSERT INTO calendar_schedules
+      (id,account,kind,title,day,note,creation_fingerprint,permalink) VALUES(?,?,'post',?,?,'staff-note','fixture',?)`)
+      await db.batch([
+        ...Array.from({ length: 15 }, (_, i) =>
+          addOlder.bind(
+            String(91000 + i),
+            '2027-09-' + String(i + 1).padStart(2, '0'),
+            'https://www.instagram.com/p/older_' + i + '/',
+          ),
+        ),
+        addLink.bind(
+          randomUUID(),
+          publicAccount,
+          'Newest manual',
+          '2028-02-15',
+          'https://www.instagram.com/p/standalone/',
+        ),
+        addLink.bind(
+          randomUUID(),
+          'jbgolfclub_official',
+          'Only official account link',
+          '2024-01-10',
+          'https://www.instagram.com/p/official/',
+        ),
+        addLink.bind(
+          randomUUID(),
+          'jbgolfclub_bundang',
+          'Only Bundang link',
+          '2023-12-01',
+          'https://www.instagram.com/p/bundang/',
+        ),
+        addLink.bind(
+          randomUUID(),
+          'jbgolfclub_bundang',
+          'Unpublished plan',
+          '2029-02-20',
+          null,
+        ),
+        // Manually placing this old media in a recent month cannot displace a newer publication.
+        addLink.bind(
+          randomUUID(),
+          publicAccount,
+          'Old matched link',
+          '2029-01-01',
+          'https://www.instagram.com/p/older_0/',
+        ),
+      ])
+      const latestResponse = await request('/api/calendar/posts')
+      assert.equal(latestResponse.status, 200)
+      assert.equal(latestResponse.headers.get('set-cookie'), null)
+      const latest = await latestResponse.json()
+      assert.equal(latest.month, 'latest')
+      assert.deepEqual(latest.accounts, month.accounts)
+      // Two media IDs with the same permalink are one published item. Its attached
+      // editable registration keeps its originally assigned date while the
+      // linked Instagram post supplies the authoritative display timestamp.
+      assert.deepEqual(
+        latest.posts.map((p) => p.id),
+        [
+          '90002',
+          '91014',
+          '91013',
+          '91012',
+          '91011',
+          '91010',
+          '91009',
+          '91008',
+        ],
+      )
+      assert.deepEqual(
+        latest.schedules.map((s) => [s.title, s.date, s.note]),
+        [
+          ['Tournament', '2028-03-02', ''],
+          ['Newest manual', '2028-02-15', ''],
+          ['Only official account link', '2024-01-10', ''],
+          ['Only Bundang link', '2023-12-01', ''],
+        ],
+      )
+      for (const value of [
+        ...Object.values(privateData),
+        cover,
+        'staff-note',
+        'Unpublished plan',
+        'Old matched link',
+      ])
+        assert.equal(JSON.stringify(latest).includes(value), false)
+    },
+  )
 })

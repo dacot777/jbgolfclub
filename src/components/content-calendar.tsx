@@ -297,7 +297,9 @@ export default function ContentCalendar({
   view?: 'calendar' | 'gallery'
 }) {
   const today = dateFormat.format(new Date())
-  const [month, setMonth] = useState(today.slice(0, 7))
+  const [month, setMonth] = useState(
+    view === 'gallery' ? 'latest' : today.slice(0, 7),
+  )
   const [filter, setFilter] = useState<Filter>('all')
   const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
   const [branchFilter, setBranchFilter] = useState<BranchFilter>('all')
@@ -350,11 +352,14 @@ export default function ContentCalendar({
         ])
         const response = readFeed
           ? await readFeed(month, signal)
-          : await fetch(api + '?month=' + month, {
-              credentials: 'same-origin',
-              cache: 'no-store',
-              signal,
-            })
+          : await fetch(
+              api + (month === 'latest' ? '/posts' : '?month=' + month),
+              {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                signal,
+              },
+            )
         if (controller.signal.aborted || active!.signal.aborted) return
         if (response.status === 401 || response.status === 403) {
           expire()
@@ -373,12 +378,16 @@ export default function ContentCalendar({
           setData(result)
       } catch {
         if (!controller.signal.aborted && !active!.signal.aborted)
-          setError('달력을 불러오지 못했습니다.')
+          setError(
+            view === 'gallery'
+              ? '게시물을 불러오지 못했습니다.'
+              : '달력을 불러오지 못했습니다.',
+          )
       }
     }
     void read()
     return () => controller.abort()
-  }, [month, reload, csrfToken, expire, readFeed])
+  }, [month, reload, csrfToken, expire, readFeed, view])
   useEffect(() => {
     if (readFeed) return
     const params = new URLSearchParams(location.search)
@@ -438,7 +447,7 @@ export default function ContentCalendar({
         original.registration = value
       } else {
         const cover =
-          value.account === 'jbgolfacademy'
+          view === 'calendar' && value.account === 'jbgolfacademy'
             ? reviewedAds.find((ad) => postKey(account, ad.postUrl) === key)
                 ?.thumbnailUrl
             : null
@@ -463,7 +472,7 @@ export default function ContentCalendar({
         a.value.title.localeCompare(b.value.title),
     )
     return result
-  }, [current, reviewedAds])
+  }, [current, reviewedAds, view])
   const calendarEntries = useMemo(
     () =>
       entries.filter(({ value }) => {
@@ -493,7 +502,7 @@ export default function ContentCalendar({
     .filter((row) => filter === 'all' || filter === row.value.account)
     .reverse()
   const plans = calendarEntries.filter((row) => row.type === 'plan')
-  const dates = calendarDates(month)
+  const dates = view === 'calendar' ? calendarDates(month) : []
   function open(next: NonNullable<Panel>) {
     if (!panel)
       opener.current =
@@ -509,6 +518,7 @@ export default function ContentCalendar({
     date: string,
     item?: CalendarSchedule,
     published = Boolean(item?.permalink),
+    selectedAccount?: Account,
   ) {
     if (readFeed) return
     const initial: CalendarScheduleInput = item
@@ -524,9 +534,8 @@ export default function ContentCalendar({
         }
       : {
           account: published
-            ? filter === 'all'
-              ? CALENDAR_ACCOUNTS[0]
-              : filter
+            ? (selectedAccount ??
+              (filter === 'all' ? CALENDAR_ACCOUNTS[0] : filter))
             : null,
           ...(!published ? { branch: null } : {}),
           date,
@@ -652,6 +661,7 @@ export default function ContentCalendar({
         (action === 'delete' && result.deleted !== true)
       )
         throw new Error()
+      // A backdated registration may be older than every item in the latest feed.
       const targetMonth = action === 'save' ? draft.date.slice(0, 7) : month
       setData((prev) =>
         prev
@@ -659,19 +669,16 @@ export default function ContentCalendar({
               ...prev,
               schedules: [
                 ...prev.schedules.filter((item) => item.id !== panel.id),
-                ...(action === 'save' && draft.date.startsWith(prev.month + '-')
+                ...(action === 'save' &&
+                (prev.month === 'latest' ||
+                  draft.date.startsWith(prev.month + '-'))
                   ? [result.item as CalendarSchedule]
                   : []),
               ],
             }
           : prev,
       )
-      if (
-        action === 'save' &&
-        panel.published &&
-        filter !== 'all' &&
-        draft.account
-      )
+      if (action === 'save' && panel.published && draft.account)
         setFilter(draft.account)
       if (
         action === 'save' &&
@@ -790,18 +797,21 @@ export default function ContentCalendar({
       )}
       {view === 'gallery' ? (
         <InstagramPosts
-          month={month}
-          onMonthChange={setMonth}
+          month={month === 'latest' ? '' : month}
+          onMonthChange={(period) => setMonth(period || 'latest')}
           filter={filter}
           onFilterChange={setFilter}
           posts={published}
           accounts={current?.accounts ?? []}
-          reviewedAds={reviewedAds}
           loading={!current && !error}
           error={error}
           onRetry={() => setReload((n) => n + 1)}
           onManage={readFeed ? undefined : () => open({ type: 'accounts' })}
-          onRegister={readFeed ? undefined : () => editor('', undefined, true)}
+          onRegister={
+            readFeed
+              ? undefined
+              : (account) => editor('', undefined, true, account)
+          }
           onEdit={readFeed ? undefined : (p) => editor(p.date, p, true)}
         />
       ) : (

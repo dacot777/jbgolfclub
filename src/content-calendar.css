@@ -32,31 +32,6 @@
   opacity: 0.52;
   cursor: default;
 }
-.cc-reviewed-posts {
-  margin: 0 0 16px;
-  color: var(--cc-secondary);
-}
-.cc-reviewed-posts ul {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
-  gap: 8px;
-  padding: 0;
-  list-style: none;
-}
-.cc-reviewed-posts a {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 6px 12px;
-  border: 1px solid var(--cc-border);
-  border-radius: 10px;
-  color: var(--cc-blue);
-}
-.cc-reviewed-posts img {
-  border-radius: 5px;
-  object-fit: cover;
-}
 .cc :is(a, button):focus-visible,
 .cc-dialog :is(a, button, input, select, textarea):focus-visible,
 .cc-kind input:focus-visible + span {

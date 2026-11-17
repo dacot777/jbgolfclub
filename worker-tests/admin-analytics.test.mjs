@@ -246,6 +246,7 @@ test('calendar viewer links authorize only the month and thumbnails, rotate, exp
     '0012_calendar_share',
     '0014_calendar_links',
     '0016_calendar_brands',
+    '0017_instagram_gallery_indexes',
   ])
   try {
     const ownerShare = '/api/admin/calendar/share'
@@ -346,6 +347,21 @@ test('calendar viewer links authorize only the month and thumbnails, rotate, exp
       'status',
     ])
     assert.equal(view.posts[0].thumbnailUrl, thumbnail)
+    const latest = '/api/admin/calendar/posts'
+    assert.equal((await f.send(latest, bearer(first.token))).status, 401)
+    await f.db
+      .prepare(
+        "UPDATE calendar_schedules SET permalink='https://www.instagram.com/p/synthetic/' WHERE id=?",
+      )
+      .bind(plan.id)
+      .run()
+    const staffFeed = await (await f.send(latest, { cookie })).json()
+    assert.equal(staffFeed.posts[0].title, 'Published')
+    assert.equal(staffFeed.schedules[0].id, plan.id)
+    assert.equal(staffFeed.schedules[0].note, plan.note)
+    assert.equal(staffFeed.schedules[0].date, plan.date)
+    assert.equal(staffFeed.schedules[0].time, plan.time)
+    assert.equal(staffFeed.posts[0].date, '2028-02-01')
     const imageCookie = cookieFrom(response)
     const image = await f.send(thumbnail, { cookie: imageCookie })
     assert.equal(image.status, 302)

@@ -16,7 +16,7 @@ export function parseCalendarPermalink(
     )
       return null
     const match =
-      /^\/(?:(?<handle>[a-z0-9._]+)\/)?(?<type>p|reel|reels)\/(?<code>[A-Za-z0-9_-]{1,64})\/?$/i.exec(
+      /^\/(?:(?<handle>[a-z0-9._]+)\/)?(?<type>p|reel|reels|tv)\/(?<code>[A-Za-z0-9_-]{1,64})\/?$/i.exec(
         url.pathname,
       )
     if (
@@ -24,8 +24,11 @@ export function parseCalendarPermalink(
       (match.groups.handle && match.groups.handle.toLowerCase() !== account)
     )
       return null
-    const kind: CalendarKind =
-      match.groups.type.toLowerCase() === 'p' ? 'post' : 'reel'
+    const kind: CalendarKind = match.groups.type
+      .toLowerCase()
+      .startsWith('reel')
+      ? 'reel'
+      : 'post'
     const shortcode = match.groups.code
     return {
       kind,

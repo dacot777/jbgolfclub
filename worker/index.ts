@@ -269,7 +269,7 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
-  if (path === '/api/calendar' || path.startsWith(PUBLIC_THUMBNAIL_PATH))
+  if (path === '/api/calendar' || path === '/api/calendar/posts' || path.startsWith(PUBLIC_THUMBNAIL_PATH))
     return publicCalendar(request, env, path)
   if (path.startsWith('/api/staff/') || path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))
     return adminAnalytics(request, env)

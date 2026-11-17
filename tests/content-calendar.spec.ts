@@ -7,6 +7,11 @@ import {
 } from '../src/lib/calendar-types'
 
 test.use({ baseURL: 'http://127.0.0.1:5174' })
+test.beforeEach(async ({ page }) => {
+  await page.route('https://www.instagram.com/**/embed/', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<main>Instagram</main>' }),
+  )
+})
 
 const csrfToken = 'test-calendar-csrf'
 const day = '2026-11-17'
@@ -74,6 +79,15 @@ async function mockStaff(page: Page) {
       ? route.fulfill({ status: 503, json: {} })
       : route.fulfill({ json: monthly(month, [...records.values()]) })
   })
+  await page.route('**/api/admin/calendar/posts', (route) =>
+    route.fulfill({
+      json: {
+        ...monthly('', []),
+        month: 'latest',
+        schedules: [...records.values()].filter((record) => record.permalink),
+      },
+    }),
+  )
   await page.route('**/api/admin/calendar/schedules**', (route) => {
     const request = route.request()
     expect(request.headers()['x-csrf-token']).toBe(csrfToken)
@@ -308,6 +322,13 @@ test('담당자가 검색한 릴스의 게시일을 확인해 등록하고 원�
   await expect(
     page.getByRole('link', { name: '직접 확인한 릴스 Instagram에서 보기' }),
   ).toHaveAttribute('href', 'https://www.instagram.com/reel/manual_fixture/')
+  await expect(page.getByRole('button', { name: '월별 보기' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(
+    page.getByRole('button', { name: '골프클럽 분당' }),
+  ).toHaveAttribute('aria-pressed', 'true')
   expect(
     [...records.values()].find((r) => r.title === '직접 확인한 릴스'),
   ).toMatchObject({
@@ -319,7 +340,10 @@ test('담당자가 검색한 릴스의 게시일을 확인해 등록하고 원�
   await expect(
     page.getByRole('link', { name: '직접 확인한 릴스 Instagram에서 보기' }),
   ).toContainText('직접 등록')
-  await page.getByRole('button', { name: '직접 확인한 릴스 링크 수정' }).click()
+  const edit = page.getByRole('button', { name: '직접 확인한 릴스 링크 수정' })
+  await edit.scrollIntoViewIfNeeded()
+  await expect(edit).toBeInViewport()
+  await edit.click()
   await dialog.getByRole('button', { name: '게시물 링크 삭제' }).click()
   await dialog.getByRole('button', { name: '삭제하기' }).click()
   await expect(
@@ -342,7 +366,7 @@ test('동기화된 원문과 같은 등록 링크는 하루에 한 번만 표시
   const dialog = page.getByRole('dialog')
   await expect(
     page.getByRole('link', { name: '테스트 게시물 Instagram에서 보기' }),
-  ).toContainText('Instagram')
+  ).toHaveAttribute('href', posts[0].permalink)
   await page.getByRole('button', { name: '테스트 게시물 링크 수정' }).click()
   await expect(dialog.getByLabel('Instagram 원문 주소')).toHaveValue(
     posts[0].permalink,
@@ -399,46 +423,25 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
   expect(privateReads).toEqual([])
 })
 
-test('아카데미 광고의 확인된 원문을 썸네일로 열고 다른 계정에서는 숨긴다', async ({
+test('피드를 직접 열면 광고 보고서나 광고 실적을 요청하지 않는다', async ({
   page,
 }) => {
-  const ads = ['하나', '둘'].map((name, i) => ({
-    id: 'fixture-ad-' + i,
-    title: '검토한 원문 ' + name,
-    postUrl: 'https://www.instagram.com/p/fixture_reviewed_' + i + '/',
-    thumbnailUrl: preview,
-    status: 'unknown',
-    objective: '',
-    schedule: null,
-  }))
-  await page.route('**/api/performance', (route) =>
-    route.fulfill({
-      json: { version: 1, source: 'reviewed_screenshots', ads, snapshots: [] },
-    }),
-  )
+  const adRequests: string[] = []
+  await page.route(/\/api\/(performance|meta-ads)([/?]|$)/, (route) => {
+    adRequests.push(route.request().url())
+    return route.fulfill({ status: 503, json: {} })
+  })
   await page.route('**/api/staff/session', (route) =>
     route.fulfill({ json: { authenticated: false } }),
   )
-  await page.route('**/api/calendar?*', (route) => {
-    const month = new URL(route.request().url()).searchParams.get('month')!
-    return route.fulfill({ json: { ...monthly(month, []), posts: [] } })
-  })
+  await page.route('**/api/calendar/posts', (route) =>
+    route.fulfill({ json: { ...monthly('', []), month: 'latest' } }),
+  )
   await page.goto('/#instagram-posts')
-  const summary = page.getByRole('region', {
-    name: '광고 보고서에 저장된 게시물',
-  })
-  await expect(summary.getByRole('link')).toHaveCount(2)
-  for (const ad of ads) {
-    const link = page.getByRole('link', { name: ad.title, exact: true })
-    await expect(link).toHaveAttribute('href', ad.postUrl)
-    await expect(link.locator('img')).toHaveAttribute('src', ad.thumbnailUrl)
-  }
-  await expect(page.locator('.cc-grid img')).toHaveCount(0)
-  await page.getByRole('button', { name: '골프클럽 공식', exact: true }).click()
-  await expect(summary).toHaveCount(0)
   await expect(
-    page.getByRole('link', { name: ads[0].title, exact: true }),
-  ).toHaveCount(0)
+    page.getByRole('link', { name: '테스트 게시물 Instagram에서 보기' }),
+  ).toBeVisible()
+  expect(adRequests).toEqual([])
 })
 
 test('load error can be retried and shared view exposes no editing or connection controls', async ({
@@ -510,10 +513,9 @@ test('unconfigured staff device sees official setup path and a selectable redire
   page,
 }) => {
   await mockStaff(page)
-  await page.route('**/api/admin/calendar?*', (route) => {
-    const month = new URL(route.request().url()).searchParams.get('month')!
+  await page.route('**/api/admin/calendar/posts', (route) => {
     const empty: CalendarMonth = {
-      month,
+      month: 'latest',
       posts: [],
       schedules: [],
       accounts: CALENDAR_ACCOUNTS.map((account) => ({

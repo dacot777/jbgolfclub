@@ -9,6 +9,7 @@ import {
   listSchedules,
 } from './calendar-schedules'
 import type { Env } from './types'
+import { latestCalendarPublications } from './calendar-gallery'
 
 export const PUBLIC_THUMBNAIL_PATH = '/api/calendar/thumbnail/'
 
@@ -94,11 +95,10 @@ export async function publicCalendar(
         env,
         path.slice(PUBLIC_THUMBNAIL_PATH.length),
       )
-    const data = await readOnlyCalendarMonth(
-      request,
-      env,
-      PUBLIC_THUMBNAIL_PATH,
-    )
+    const data =
+      path === '/api/calendar/posts'
+        ? await latestCalendarPublications(env, false)
+        : await readOnlyCalendarMonth(request, env, PUBLIC_THUMBNAIL_PATH)
     return Response.json(data, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     const known = error instanceof CalendarError

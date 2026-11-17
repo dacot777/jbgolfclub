@@ -1,6 +1,7 @@
 # JB Golf project instructions
 
 - Calendar schedules are organized by brand (JB골프클럽, JB아카데미, 하우스 오브 제이비). New club schedules require 청담 or 서현. Display branch names with their colors. The Instagram collection, search links and post-link registration belong in the separate `#instagram-posts` workspace. A brand schedule can exist without an Instagram account.
+- Open the Instagram collection on the three accounts' public profile feeds. Do not source gallery cards from the advertising reports. Use verified publication dates for the monthly archive and calendar.
 
 - Read README.md, docs/DESIGN.md, docs/COST_POLICY.md and docs/INSTAGRAM_SETUP.md before changing the connection flow.
 - User requirement: all website work should stay within free service tiers. Do not opt into paid plans, subscriptions or automatic upgrades. Cloudflare Workers Free + D1 is deployed at https://jbgolf-connection.jbgolfacademy.workers.dev; see docs/CLOUDFLARE_DEPLOYMENT.md. Site-facing Instagram profile login still needs configuration and owner authorization.

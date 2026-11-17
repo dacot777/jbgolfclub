@@ -26,6 +26,7 @@ import {
   startCalendarInstagram,
 } from './calendar-instagram'
 import { loadCalendarMonth, readOnlyCalendarMonth } from './public-calendar'
+import { latestCalendarPublications } from './calendar-gallery'
 import {
   calendarShareStatus,
   rotateCalendarShare,
@@ -493,6 +494,10 @@ export async function adminAnalytics(
     if (path === '/api/admin/calendar' && request.method === 'GET') {
       await requireStaff(request, env)
       return json(await loadCalendarMonth(request, env))
+    }
+    if (path === '/api/admin/calendar/posts' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json(await latestCalendarPublications(env, true))
     }
     if (path === '/api/admin/calendar/share' && request.method === 'GET') {
       await requireStaff(request, env)

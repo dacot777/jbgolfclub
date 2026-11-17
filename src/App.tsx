@@ -160,7 +160,7 @@ export default function App() {
           : 'overview',
   )
   const instagram = useInstagramConnection()
-  const reviewed = useReviewedPerformance()
+  const reviewed = useReviewedPerformance(active !== 'instagram-posts')
   const meta = useCardPerformance(!isMedia && !isWorkArea && !sample)
   const showReviewed =
     !sample && Boolean(reviewed.data?.ads.length || meta.report?.cards?.length)
@@ -496,7 +496,7 @@ export default function App() {
               {staffPage ? (
                 <StaffWorkspace
                   page={staffPage}
-                  reviewedAds={reviewed.data?.ads}
+                  reviewedAds={isCalendar ? reviewed.data?.ads : undefined}
                 />
               ) : (
                 <AdminAnalytics />
