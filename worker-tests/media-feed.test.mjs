@@ -16,6 +16,7 @@ const keywords = [
   'JB골프아카데미',
   'JB GOLF ACADEMY',
   'JB ACADEMY',
+  'JB 골프클럽',
 ]
 
 // This harness supplies virtual time and synthetic search results; production
@@ -131,7 +132,7 @@ async function fixture({ withDatabase = true } = {}) {
   }
 }
 
-test('GET 한 번에 한 키워드씩 아홉 별칭을 모두 검색하고 중복 URL을 누적 병합한다', async () => {
+test('GET 한 번에 한 키워드씩 모든 별칭을 검색하고 중복 URL을 누적 병합한다', async () => {
   const f = await fixture()
   try {
     let completed
@@ -142,9 +143,9 @@ test('GET 한 번에 한 키워드씩 아홉 별칭을 모두 검색하고 중�
       const data = await response.json()
       assert.equal(data.kind, 'news')
       assert.deepEqual(data.keywords, keywords)
-      assert.equal(data.totalQueries, 9)
+      assert.equal(data.totalQueries, keywords.length)
       assert.equal(data.successfulQueries, step + 1)
-      assert.equal(data.refreshing, step < 8)
+      assert.equal(data.refreshing, step + 1 < keywords.length)
       assert.equal((await f.calls()).length, step + 1)
       assert.equal(data.items.length, step + 2)
       completed = data
@@ -158,7 +159,7 @@ test('GET 한 번에 한 키워드씩 아홉 별칭을 모두 검색하고 중�
     assert.equal(completed.status, 'fresh')
     assert.ok(completed.updatedAt)
     assert.ok(completed.checkedAt)
-    assert.equal(completed.items.length, 10)
+    assert.equal(completed.items.length, keywords.length + 1)
     const common = completed.items.filter(
       (item) => item.url === 'https://example.com/news/shared',
     )
@@ -186,8 +187,8 @@ test('공식 계정이 아닌 독립 블로그 결과도 브랜드 관련성이 
     const data = steps.at(-1)
     assert.equal(data.kind, 'blog')
     assert.equal(data.status, 'fresh')
-    assert.equal(data.successfulQueries, 9)
-    assert.equal(data.items.length, 10)
+    assert.equal(data.successfulQueries, keywords.length)
+    assert.equal(data.items.length, keywords.length + 1)
     assert.ok(
       data.items.every(
         (item) =>
@@ -224,7 +225,7 @@ test('완료 후 30초 이내에는 추가 검색 없이 캐시를 읽고 이후
     const data = await cached.json()
     assert.equal(data.status, 'cached')
     assert.equal(data.refreshing, false)
-    assert.equal((await f.calls()).length, 9)
+    assert.equal((await f.calls()).length, keywords.length)
     assert.deepEqual(
       data.items.map((item) => item.url).sort(),
       original.items.map((item) => item.url).sort(),
@@ -232,8 +233,8 @@ test('완료 후 30초 이내에는 추가 검색 없이 캐시를 읽고 이후
     const refreshed = (
       await f.cycle('news', { clock: now + 30000, generation: 2 })
     ).at(-1)
-    assert.equal((await f.calls()).length, 18)
-    assert.equal(refreshed.items.length, 19)
+    assert.equal((await f.calls()).length, keywords.length * 2)
+    assert.equal(refreshed.items.length, keywords.length * 2 + 1)
     for (const item of original.items)
       assert.ok(
         refreshed.items.some(
@@ -257,7 +258,7 @@ test('정상 검색 결과 0건과 검색 실패를 구분하고 실패해도 �
   try {
     const zero = (await empty.cycle('news', { mode: 'empty' })).at(-1)
     assert.equal(zero.status, 'fresh')
-    assert.equal(zero.successfulQueries, 9)
+    assert.equal(zero.successfulQueries, keywords.length)
     assert.deepEqual(zero.items, [])
     const original = (await failed.cycle()).at(-1)
     const unavailable = (
@@ -289,9 +290,9 @@ test('일부 키워드 오류는 성공한 검색을 보존하고 전체 성공�
   try {
     const data = (await f.cycle('news', { mode: 'one-error' })).at(-1)
     assert.equal(data.status, 'partial')
-    assert.equal(data.successfulQueries, 8)
+    assert.equal(data.successfulQueries, keywords.length - 1)
     assert.equal(data.refreshing, false)
-    assert.equal((await f.calls()).length, 9)
+    assert.equal((await f.calls()).length, keywords.length)
     assert.ok(data.items.length > 0)
   } finally {
     await f.dispose()
