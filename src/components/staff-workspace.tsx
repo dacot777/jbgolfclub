@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import InquirySummaryList from './inquiry-summary-list'
 import { activateStaffDevice, readStaffSession } from '@/lib/staff-device'
 import type { ReviewedAd } from '@/lib/reviewed-performance-types'
 import '@/admin-analytics.css'
@@ -156,7 +156,6 @@ export default function StaffWorkspace({
           },
     )
   }, [])
-  const [initialCheck, setInitialCheck] = useState(true)
   const [checking, setChecking] = useState(false)
   const pending = useRef<AbortController | null>(null)
   const [error, setError] = useState('')
@@ -167,7 +166,6 @@ export default function StaffWorkspace({
       pending.current?.abort()
       pending.current = null
       setChecking(false)
-      setInitialCheck(false)
       setError('')
       updateSession(csrf)
     },
@@ -193,14 +191,12 @@ export default function StaffWorkspace({
       if (!controller.signal.aborted) {
         pending.current = null
         setChecking(false)
-        setInitialCheck(false)
       }
     }
   }, [updateSession])
   // Workspace navigation is an in-page link: it does not fire a window focus
   // event. Check again on entry so a newly paired browser opens its list directly.
   useEffect(() => {
-    setInitialCheck(true)
     void check()
   }, [check, page])
   useEffect(() => {
@@ -252,20 +248,17 @@ export default function StaffWorkspace({
       이 기기 연결 해제
     </Button>
   )
+  const sessionNotice = error && (
+    <div className="admin-error" role="alert">
+      {error}{' '}
+      <Button variant="ghost" disabled={checking} onClick={() => void check()}>
+        다시 확인
+      </Button>
+    </div>
+  )
   return (
     <>
-      {error && (
-        <div className="admin-error" role="alert">
-          {error}{' '}
-          <Button
-            variant="ghost"
-            disabled={checking}
-            onClick={() => void check()}
-          >
-            다시 확인
-          </Button>
-        </div>
-      )}
+      {(page !== 'inquiries' || csrf) && sessionNotice}
       <Suspense fallback={<p role="status">페이지를 여는 중입니다.</p>}>
         {page !== 'inquiries' ? (
           <>
@@ -315,36 +308,38 @@ export default function StaffWorkspace({
                 <h1>
                   문의·상담 현황<span>.</span>
                 </h1>
-                {csrf && (
-                  <p className="page-description">
-                    문의가 들어온 채널과 유입 경로, 인계 담당자를 기록합니다.
-                  </p>
-                )}
+                <p className="page-description">
+                  {csrf
+                    ? '문의가 들어온 채널과 유입 경로, 인계 담당자를 기록합니다.'
+                    : '관심 상품, 지점, 문의 채널과 진행 상태가 같은 문의를 한 줄로 모았습니다.'}
+                </p>
               </div>
               {disconnectButton}
             </section>
             {csrf ? (
               <InquiryWorkspace csrfToken={csrf} onUnauthorized={expired} />
-            ) : initialCheck ? (
-              <p role="status">
-                이 브라우저의 담당자 연결을 확인하고 있습니다.
-              </p>
             ) : (
-              <Card className="max-w-2xl gap-4 px-6">
-                <h2 className="text-lg font-semibold">
-                  이 브라우저에서 문의 열기
-                </h2>
-                <p>
-                  고객 이름과 연락처는 담당자에게만 보입니다. 업무용 PC에 발급된
-                  연결 파일을 한 번 선택하면 이 창에 문의 목록이 열립니다.
-                </p>
-                <StaffDeviceAccess
-                  workspace="inquiries"
-                  onConnected={changeSession}
-                  onCheck={check}
-                  checking={checking}
-                />
-              </Card>
+              <>
+                <InquirySummaryList />
+                <details className="mt-5 max-w-2xl text-sm">
+                  <summary className="w-fit cursor-pointer py-3 font-medium">
+                    담당자 도구
+                  </summary>
+                  <div className="grid gap-3 py-2">
+                    <p>
+                      업무용 브라우저를 연결하면 개별 문의를 열고 수정할 수
+                      있습니다.
+                    </p>
+                    {sessionNotice}
+                    <StaffDeviceAccess
+                      workspace="inquiries"
+                      onConnected={changeSession}
+                      onCheck={check}
+                      checking={checking}
+                    />
+                  </div>
+                </details>
+              </>
             )}
           </div>
         )}

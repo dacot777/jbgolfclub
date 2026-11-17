@@ -5,6 +5,7 @@ import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
 import { cleanupStaffAccess } from './staff-access'
 import { publicCalendar, PUBLIC_THUMBNAIL_PATH } from './public-calendar'
+import { publicInquirySummary } from './inquiries'
 import { collectMetaAds, readPublicMetaAds } from './meta-ads'
 import { readMetaLifetime } from './meta-lifetime'
 import { getMetaAdThumbnail } from './meta-ad-assets'
@@ -269,6 +270,8 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
+  if (path === '/api/inquiries/summary' && request.method === 'GET')
+    return publicInquirySummary(env.DB)
   if (path === '/api/calendar' || path === '/api/calendar/posts' || path.startsWith(PUBLIC_THUMBNAIL_PATH))
     return publicCalendar(request, env, path)
   if (path.startsWith('/api/staff/') || path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))

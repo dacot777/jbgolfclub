@@ -65,3 +65,8 @@ export interface Inquiry extends Omit<InquiryInput, 'customerType'> {
   id: string
   version: number
 }
+
+export type InquirySummaryRow = Pick<
+  InquiryInput,
+  'product' | 'branch' | 'channel' | 'stage'
+> & { count: number }

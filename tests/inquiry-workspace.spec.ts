@@ -20,6 +20,10 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   let analyticsEvents = 0
   const deletionRequests: string[] = []
   const records = new Map<string, Inquiry>()
+  await page.route('**/api/inquiries/summary', (route) => {
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({ json: { rows: [] } })
+  })
   await page.route('**/api/analytics/event', (route) => {
     analyticsEvents++
     return route.fulfill({ status: 204 })
@@ -119,7 +123,122 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   }
 }
 
-test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 보고 연결된 기기에서만 문의를 읽는다', async ({
+for (const width of [390, 1440]) {
+  test(`${width}px 처음 쓰는 브라우저에서 문의 집계를 바로 열고 새로고침한다`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 850 })
+    const api = await mockWorkspace(page, false)
+    let releaseSession: () => void
+    const pendingSession = new Promise<void>((resolve) => {
+      releaseSession = resolve
+    })
+    await page.route('**/api/staff/session', async (route) => {
+      await pendingSession
+      await route.fulfill({ json: { authenticated: false } })
+    })
+    const summaryRows = [
+      {
+        product: 'camp',
+        branch: 'hanam',
+        channel: 'kakao',
+        stage: 'received',
+        count: 3,
+      },
+      {
+        product: 'lesson',
+        branch: null,
+        channel: 'instagram_dm',
+        stage: 'consulting',
+        count: 2,
+      },
+    ]
+    let summaryReads = 0
+    await page.route('**/api/inquiries/summary', (route) => {
+      expect(route.request().method()).toBe('GET')
+      summaryReads++
+      return route.fulfill({ json: { rows: summaryRows } })
+    })
+    const restrictedRequests: string[] = []
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname
+      if (
+        path.startsWith('/api/admin/inquiries') ||
+        path === '/api/staff/activate'
+      ) {
+        restrictedRequests.push(path)
+      }
+    })
+    await page.goto('/#inquiries')
+    const table = page.getByRole('table', { name: '조건별 문의 건수' })
+    const total = page.getByLabel('전체 문의 현황')
+    try {
+      await expect(table).toBeVisible()
+    } finally {
+      releaseSession!()
+    }
+    await expectTotal(total, 5)
+    const campRow = table.getByRole('row').filter({ hasText: '전지훈련' })
+    for (const value of ['하남', '카카오채널', '문의 접수', '3']) {
+      await expect(campRow).toContainText(value)
+    }
+    const lessonRow = table.getByRole('row').filter({ hasText: '레슨' })
+    for (const value of ['인스타그램 DM', '상담 중', '2']) {
+      await expect(lessonRow).toContainText(value)
+    }
+    await expect(table.getByRole('columnheader')).toHaveCount(5)
+    await expect(
+      table.getByRole('columnheader', {
+        name: /이름|연락처|메모|고객 구분|담당자|날짜/,
+      }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: /QR|연결 파일 선택|새 문의|수정|삭제/ }),
+    ).toHaveCount(0)
+    await expect(page.locator('input[type="password"]')).toHaveCount(0)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true)
+    const readsBeforeReload = summaryReads
+    await page.reload()
+    await expectTotal(total, 5)
+    await expect(campRow).toBeVisible()
+    expect(summaryReads).toBeGreaterThan(readsBeforeReload)
+    expect(restrictedRequests).toEqual([])
+    expect(api.reads()).toBe(0)
+  })
+}
+
+test('공개 문의 집계 조회 오류는 0건으로 표시하지 않고 다시 불러온 결과만 빈 상태로 표시한다', async ({
+  page,
+}) => {
+  await mockWorkspace(page, false)
+  let unavailable = true
+  await page.route('**/api/inquiries/summary', (route) =>
+    unavailable
+      ? route.fulfill({ status: 503, json: { error: { code: 'unavailable' } } })
+      : route.fulfill({ json: { rows: [] } }),
+  )
+  await page.goto('/#inquiries')
+  await expect(page.getByRole('alert')).toContainText(
+    '문의 목록을 불러오지 못했습니다.',
+  )
+  await expect(page.getByLabel('전체 문의 현황')).toHaveCount(0)
+  await expect(
+    page.getByText('등록된 문의가 없습니다.', { exact: true }),
+  ).toHaveCount(0)
+  unavailable = false
+  await page.getByRole('button', { name: '다시 불러오기' }).click()
+  await expect(
+    page.getByText('등록된 문의가 없습니다.', { exact: true }),
+  ).toBeVisible()
+  await expectTotal(page.getByLabel('전체 문의 현황'), 0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('문의 집계에서 담당자로 연결하면 원래 목록이 열리고 로그아웃하면 다시 집계로 돌아간다', async ({
   page,
 }) => {
   const api = await mockWorkspace(page, false)
@@ -136,9 +255,10 @@ test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 
   await expect(
     page.getByRole('heading', { name: /문의·상담 현황/ }),
   ).toBeVisible()
+  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
-  ).toBeVisible()
+  ).toBeHidden()
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '새 문의', exact: true }),
@@ -157,10 +277,13 @@ test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 
   const summary = page.getByLabel('전체 문의 현황')
   await expectTotal(summary, 0)
   await page.getByRole('button', { name: '이 기기 연결 해제' }).click()
+  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
-  ).toBeVisible()
-  await expect(summary).toHaveCount(0)
+  ).toBeHidden()
+  await expect(
+    page.getByRole('button', { name: '새 문의', exact: true }),
+  ).toHaveCount(0)
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   expect(api.analyticsEvents()).toBe(0)
 })
@@ -170,6 +293,7 @@ test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 �
 }) => {
   const api = await mockWorkspace(page, false)
   await page.goto('/#inquiries')
+  await page.getByText('담당자 도구', { exact: true }).click()
   const makeLauncher = (href: string) => ({
     name: '운영-기기-연결.html',
     mimeType: 'text/html',
@@ -194,7 +318,9 @@ test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 �
   await file.setInputFiles(
     makeLauncher(hosted + '/#staff-device/' + deviceGrant),
   )
-  await expect(page.getByRole('heading', { name: '문의 목록' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '새 문의', exact: true }),
+  ).toBeVisible()
   await expect(page).toHaveURL(/#inquiries$/)
   expect(api.grantUses()).toBe(1)
   expect(
@@ -222,9 +348,10 @@ test('캘린더에서 문의·상담으로 이동하면 다른 탭에서 연결�
     note: '',
   })
   await page.goto('/#inquiries')
+  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
-  ).toBeVisible()
+  ).toBeHidden()
   expect(api.reads()).toBe(0)
   await page.getByRole('link', { name: '콘텐츠 캘린더', exact: true }).click()
   await expect(
@@ -252,20 +379,27 @@ test('다른 탭에서 담당자 연결을 마치거나 해제한 뒤 기존 문
   const api = await mockWorkspace(page, false)
   await page.goto('/#inquiries')
   const recheck = page.getByRole('button', { name: '연결 상태 다시 확인' })
-  await expect(recheck).toBeVisible()
+  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
+  await expect(recheck).toBeHidden()
   api.setSignedIn(true)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   const list = page.getByRole('heading', { name: '문의 목록' })
-  await expect(list).toBeVisible()
+  const privateEditor = page.getByRole('button', {
+    name: '새 문의',
+    exact: true,
+  })
+  await expect(privateEditor).toBeVisible()
   api.setSignedIn(false)
   await page.evaluate(() =>
     document.dispatchEvent(new Event('visibilitychange')),
   )
-  await expect(list).toHaveCount(0)
+  await expect(privateEditor).toHaveCount(0)
+  await expect(list).toBeVisible()
+  await page.getByText('담당자 도구', { exact: true }).click()
   await expect(recheck).toBeVisible()
   api.setSignedIn(true)
   await recheck.click()
-  await expect(list).toBeVisible()
+  await expect(privateEditor).toBeVisible()
 })
 
 test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필터를 새로고침 후에도 확인한다', async ({

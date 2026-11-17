@@ -11,6 +11,7 @@ import {
   STAGE_LABELS,
   type Inquiry,
   type InquiryInput,
+  type InquirySummaryRow,
 } from '../src/lib/inquiry-types'
 
 type PrivateFields = Required<Pick<InquiryInput, keyof typeof INQUIRY_LIMITS>>
@@ -135,6 +136,38 @@ export async function listInquiries(env: Env): Promise<Inquiry[]> {
     `SELECT ${columns} FROM inquiries ORDER BY created_at DESC,rowid DESC`,
   ).all<InquiryRow>()
   return Promise.all(results.map((row) => itemFrom(row, env)))
+}
+
+export async function publicInquirySummary(db: Env['DB']) {
+  try {
+    // Only these fixed categories are public, including on databases with older rows.
+    const { results: rows } = await db
+      .prepare(
+        `SELECT product, branch, channel, stage, COUNT(*) AS count
+       FROM inquiries
+       WHERE product IN ('camp','lesson','other')
+         AND (branch IS NULL OR branch IN ('hanam','cheongdam','seohyeon'))
+         AND channel IN ('kakao','instagram_dm','phone','other')
+         AND stage IN ('received','consulting','completed','closed')
+       GROUP BY product, branch, channel, stage
+       ORDER BY product, branch, channel, stage`,
+      )
+      .all<InquirySummaryRow>()
+    return Response.json(
+      { rows },
+      {
+        headers: { 'Cache-Control': 'public, max-age=0, s-maxage=30' },
+      },
+    )
+  } catch {
+    return Response.json(
+      { error: { code: 'inquiries_unavailable' } },
+      {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store' },
+      },
+    )
+  }
 }
 async function privateFields(
   env: Env,
