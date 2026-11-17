@@ -1,5 +1,9 @@
 # GitHub Pages 배포 기록
 
+## 2026년 11월 17일 · 운영 콘텐츠 캘린더
+
+Cloudflare의 기존 대시보드에 세 계정의 콘텐츠 캘린더와 대표님 열람 화면을 배포했습니다. GitHub 소스 브랜치는 `codex/instagram-ads-report`이며, 실제 사이트와 검증 결과는 [Cloudflare 배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 있습니다.
+
 ## 2026-11-06 — 비공개 방문 통계 배포·로고 위 클릭 동작 수정
 
 - 실제 주소: https://jbgolf-connection.jbgolfacademy.workers.dev/ . 소스 `5ee2cd2`, Worker 버전 `7b499e5e-d385-4e04-bb5f-a27f6a817bbd`.
