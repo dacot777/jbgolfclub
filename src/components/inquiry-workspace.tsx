@@ -15,6 +15,7 @@ import {
   ASSIGNEE_LABELS,
   BRANCH_LABELS,
   CHANNEL_LABELS,
+  CUSTOMER_TYPE_LABELS,
   INQUIRY_LIMITS,
   PRODUCT_LABELS,
   SOURCE_LABELS,
@@ -26,7 +27,7 @@ import type { MetaAdCard } from '@/lib/meta-ads-types'
 import '@/inquiry-workspace.css'
 
 type AdOption = Pick<MetaAdCard, 'id' | 'title'>
-type Draft = Omit<InquiryInput, 'product' | 'channel'> & {
+type Draft = Omit<InquiryInput, 'product' | 'channel' | 'nextAction'> & {
   product: InquiryInput['product'] | ''
   channel: InquiryInput['channel'] | ''
 }
@@ -35,6 +36,7 @@ type Edit = {
   version: number | null
   draft: Draft
   savedSummary?: string
+  previousAction?: string
 }
 const emptyDraft: Draft = {
   firstDate: null,
@@ -45,13 +47,14 @@ const emptyDraft: Draft = {
   adId: null,
   stage: 'received',
   assignee: 'unassigned',
+  customerType: null,
   name: '',
   contact: '',
   note: '',
-  nextAction: '',
 }
 const collectionPath = '/api/admin/inquiries'
 const branchChoices = { '': '미지정', ...BRANCH_LABELS }
+const customerChoices = { '': '미지정', ...CUSTOMER_TYPE_LABELS }
 const noStore = { credentials: 'same-origin', cache: 'no-store' } as const
 const options = (labels: Record<string, string>) =>
   Object.entries(labels).map(([value, label]) => (
@@ -106,7 +109,8 @@ function InquiryChoices<T extends string>({
 }
 
 function editItem(item: Inquiry): Edit {
-  const { id, version, ...draft } = item
+  const { id, version, nextAction, ...fields } = item
+  const draft: Draft = { ...fields, customerType: item.customerType ?? null }
   const savedSummary = [
     item.name,
     PRODUCT_LABELS[item.product] + ' 문의',
@@ -116,7 +120,13 @@ function editItem(item: Inquiry): Edit {
   ]
     .filter(Boolean)
     .join(' · ')
-  return { id, version, draft, savedSummary }
+  return {
+    id,
+    version,
+    draft,
+    savedSummary,
+    previousAction: nextAction?.trim() ? nextAction : undefined,
+  }
 }
 
 function isItem(value: unknown): value is Inquiry {
@@ -127,10 +137,11 @@ function isItem(value: unknown): value is Inquiry {
     Number.isSafeInteger(row.version) &&
     (row.firstDate === null || typeof row.firstDate === 'string') &&
     (row.branch === null || Object.hasOwn(BRANCH_LABELS, String(row.branch))) &&
+    (row.customerType == null ||
+      Object.hasOwn(CUSTOMER_TYPE_LABELS, String(row.customerType))) &&
+    (row.nextAction === undefined || typeof row.nextAction === 'string') &&
     (row.adId === null || typeof row.adId === 'string') &&
-    ['name', 'contact', 'note', 'nextAction'].every(
-      (key) => typeof row[key] === 'string',
-    ) &&
+    ['name', 'contact', 'note'].every((key) => typeof row[key] === 'string') &&
     Object.hasOwn(PRODUCT_LABELS, String(row.product)) &&
     Object.hasOwn(CHANNEL_LABELS, String(row.channel)) &&
     Object.hasOwn(SOURCE_LABELS, String(row.source)) &&
@@ -541,7 +552,12 @@ export default function InquiryWorkspace({
                       <tr key={row.id}>
                         <th scope="row">
                           <strong>{title}</strong>
-                          <small>{row.firstDate ?? '문의일 미확인'}</small>
+                          <small>
+                            {row.customerType && (
+                              <>{CUSTOMER_TYPE_LABELS[row.customerType]} · </>
+                            )}
+                            {row.firstDate ?? '문의일 미확인'}
+                          </small>
                         </th>
                         <td>
                           <span className="iq-mobile-label">관심 상품</span>
@@ -663,6 +679,15 @@ export default function InquiryWorkspace({
                   disabled={saving}
                   icon={UserRound}
                   onChange={(value) => change('assignee', value)}
+                />
+                <InquiryChoices
+                  legend="문의 대상"
+                  name="iq-customer-type"
+                  choices={customerChoices}
+                  value={edit.draft.customerType ?? ''}
+                  disabled={saving}
+                  icon={UserRound}
+                  onChange={(value) => change('customerType', value || null)}
                 />
                 <InquiryChoices
                   legend="지점"
@@ -795,14 +820,16 @@ export default function InquiryWorkspace({
                       onChange={(e) => change('note', e.target.value)}
                     />
                   </label>
-                  <label className="iq-wide">
-                    다음 할 일
-                    <input
-                      value={edit.draft.nextAction}
-                      maxLength={INQUIRY_LIMITS.nextAction}
-                      onChange={(e) => change('nextAction', e.target.value)}
-                    />
-                  </label>
+                  {edit.previousAction && (
+                    <dl className="iq-wide text-sm">
+                      <dt className="font-semibold">
+                        이전에 기록한 다음 할 일
+                      </dt>
+                      <dd className="mt-1 whitespace-pre-wrap break-words">
+                        {edit.previousAction}
+                      </dd>
+                    </dl>
+                  )}
                 </fieldset>
               </div>
               <footer className="iq-dialog-footer">

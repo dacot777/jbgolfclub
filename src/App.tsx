@@ -66,7 +66,9 @@ const workspaceRoutes = [
   'news',
   'blog',
   'admin',
-  ...(__INSTAGRAM_BACKEND__ ? ['inquiries', 'calendar'] : []),
+  ...(__INSTAGRAM_BACKEND__
+    ? ['inquiries', 'calendar', 'instagram-posts']
+    : []),
 ]
 
 const WeeklyChart = lazy(() =>
@@ -140,7 +142,13 @@ export default function App() {
   const isMedia = active === 'news' || active === 'blog'
   const isInquiries = active === 'inquiries'
   const isCalendar = active === 'calendar'
-  const isWorkArea = active === 'admin' || isInquiries || isCalendar
+  const staffPage =
+    active === 'calendar' ||
+    active === 'instagram-posts' ||
+    active === 'inquiries'
+      ? active
+      : null
+  const isWorkArea = active === 'admin' || Boolean(staffPage)
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isWorkArea
@@ -361,6 +369,11 @@ export default function App() {
             ...(__INSTAGRAM_BACKEND__
               ? [
                   { id: 'calendar', name: '콘텐츠 캘린더', icon: CalendarDays },
+                  {
+                    id: 'instagram-posts',
+                    name: '인스타 게시물 모아보기',
+                    icon: Camera,
+                  },
                   { id: 'inquiries', name: '문의·상담', icon: MessagesSquare },
                 ]
               : []),
@@ -398,21 +411,23 @@ export default function App() {
             <span>
               {isCalendar
                 ? '콘텐츠 캘린더'
-                : isInquiries
-                  ? '문의·상담 현황'
-                  : isWorkArea
-                    ? '관리자'
-                    : active === 'news'
-                      ? '기사'
-                      : active === 'blog'
-                        ? '블로그'
-                        : '성과 대시보드'}
+                : active === 'instagram-posts'
+                  ? '인스타 게시물 모아보기'
+                  : isInquiries
+                    ? '문의·상담 현황'
+                    : isWorkArea
+                      ? '관리자'
+                      : active === 'news'
+                        ? '기사'
+                        : active === 'blog'
+                          ? '블로그'
+                          : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
             <span className="connection-status">
               <i />
-              {isCalendar
+              {isCalendar || active === 'instagram-posts'
                 ? '한국 시간'
                 : isInquiries
                   ? '담당자 업무공간'
@@ -478,8 +493,11 @@ export default function App() {
           )}
           {isWorkArea ? (
             <Suspense fallback={<p role="status">페이지를 여는 중입니다.</p>}>
-              {isCalendar || isInquiries ? (
-                <StaffWorkspace page={isCalendar ? 'calendar' : 'inquiries'} />
+              {staffPage ? (
+                <StaffWorkspace
+                  page={staffPage}
+                  reviewedAds={reviewed.data?.ads}
+                />
               ) : (
                 <AdminAnalytics />
               )}

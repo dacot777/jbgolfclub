@@ -8,6 +8,10 @@ export const BRANCH_LABELS = {
   cheongdam: '청담',
   seohyeon: '서현',
 } as const
+export const CUSTOMER_TYPE_LABELS = {
+  junior: '주니어',
+  adult: '일반인',
+} as const
 export const CHANNEL_LABELS = {
   kakao: '카카오채널',
   instagram_dm: '인스타그램 DM',
@@ -49,13 +53,15 @@ export interface InquiryInput {
   adId: string | null
   stage: keyof typeof STAGE_LABELS
   assignee: keyof typeof ASSIGNEE_LABELS
+  customerType: keyof typeof CUSTOMER_TYPE_LABELS | null
   name: string
   contact: string
   note: string
-  nextAction: string
+  nextAction?: string
 }
 
-export interface Inquiry extends InquiryInput {
+export interface Inquiry extends Omit<InquiryInput, 'customerType'> {
+  customerType?: InquiryInput['customerType']
   id: string
   version: number
 }

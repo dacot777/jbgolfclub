@@ -15,16 +15,23 @@ import {
   ChevronRight,
   Clapperboard,
   Image as ImageIcon,
-  Link2,
   Pencil,
   Plus,
   Trash2,
   X,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { parseCalendarPermalink } from '@/lib/calendar-permalink'
+import type { ReviewedAd } from '@/lib/reviewed-performance-types'
+import InstagramPosts from './instagram-posts'
 import {
   CALENDAR_ACCOUNTS,
   CALENDAR_LIMITS,
+  CALENDAR_BRANDS,
+  CALENDAR_BRANCHES,
+  calendarOrganizationForAccount,
+  type CalendarBrand,
+  type CalendarBranch,
   type CalendarAccountStatus,
   type CalendarMonth,
   type CalendarPost,
@@ -35,14 +42,19 @@ import '@/content-calendar.css'
 
 type Account = (typeof CALENDAR_ACCOUNTS)[number]
 type Filter = Account | 'all'
-type Entry =
-  | { type: 'post'; value: CalendarPost }
-  | { type: 'plan'; value: CalendarSchedule }
+export type CalendarPublication = {
+  type: 'post'
+  value: CalendarPost
+  source: 'instagram' | 'manual'
+  registration?: CalendarSchedule
+}
+type Entry = CalendarPublication | { type: 'plan'; value: CalendarSchedule }
 type Panel =
   | { type: 'accounts' }
   | { type: 'day'; date: string }
   | {
       type: 'editor'
+      published: boolean
       original: CalendarSchedule | null
       id: string
       fromDay: string | null
@@ -75,6 +87,7 @@ const longDay = new Intl.DateTimeFormat('ko-KR', {
   weekday: 'long',
 })
 const weekdays = ['일', '월', '화', '수', '목', '금', '토']
+const noReviewedAds: ReviewedAd[] = []
 function utcDate(date: string) {
   return new Date(date + 'T12:00:00Z')
 }
@@ -98,8 +111,51 @@ function displayMonth(month: string) {
   const [y, m] = month.split('-')
   return y + '년 ' + Number(m) + '월'
 }
+type BrandFilter = CalendarBrand | 'all'
+type BranchFilter = CalendarBranch | 'all' | 'unspecified'
+
+function scheduleOwner(item: CalendarScheduleInput | CalendarPost) {
+  if ('brand' in item && item.brand)
+    return { brand: item.brand, branch: item.branch ?? null }
+  if (item.account) return calendarOrganizationForAccount(item.account)
+  return { brand: undefined, branch: null }
+}
+function BrandMark({
+  item,
+  compact = false,
+}: {
+  item: CalendarScheduleInput | CalendarPost
+  compact?: boolean
+}) {
+  const { brand, branch } = scheduleOwner(item)
+  const label =
+    brand === 'club'
+      ? branch
+        ? CALENDAR_BRANCHES[branch]
+        : '지점 미지정'
+      : brand === 'haus' && compact
+        ? 'Haus of JB'
+        : brand
+          ? CALENDAR_BRANDS[brand]
+          : '브랜드 미지정'
+  const color =
+    brand === 'club' ? (branch ?? 'unspecified') : (brand ?? 'unspecified')
+  return (
+    <span className="cc-brand-mark" data-color={color}>
+      {brand === 'club' && !compact ? CALENDAR_BRANDS.club + ' · ' : ''}
+      {label}
+    </span>
+  )
+}
 function entryKey(entry: Entry) {
   return entry.type + '-' + entry.value.account + '-' + entry.value.id
+}
+function postKey(account: Account, permalink: string) {
+  return (
+    account +
+    '/' +
+    (parseCalendarPermalink(permalink, account)?.shortcode ?? permalink)
+  )
 }
 function EntryIcon({
   kind,
@@ -158,10 +214,14 @@ function EntryList({
               <strong>{item.title || kindLabels[item.kind]}</strong>
               <small>
                 {Number(item.date.slice(5, 7))}월 {Number(item.date.slice(8))}일
-                {item.time ? ' ' + item.time : ''} ·{' '}
-                {accountLabels[item.account]} · {kindLabels[item.kind]}
-                {showStatus &&
-                  (entry.type === 'post' ? ' · 게시됨' : ' · 일정')}
+                {item.time ? ' ' + item.time : ''} · <BrandMark item={item} />
+                {' · '}
+                {kindLabels[item.kind]}
+                {entry.type === 'post'
+                  ? entry.source === 'manual'
+                    ? ' · 담당자 등록'
+                    : ' · Instagram 동기화'
+                  : showStatus && ' · 일정'}
               </small>
             </span>
           </>
@@ -227,14 +287,20 @@ export default function ContentCalendar({
   csrfToken,
   onUnauthorized,
   readFeed,
+  reviewedAds = noReviewedAds,
+  view = 'calendar',
 }: {
   csrfToken: string
   onUnauthorized: () => void
   readFeed?: (month: string, signal: AbortSignal) => Promise<Response>
+  reviewedAds?: ReviewedAd[]
+  view?: 'calendar' | 'gallery'
 }) {
   const today = dateFormat.format(new Date())
   const [month, setMonth] = useState(today.slice(0, 7))
   const [filter, setFilter] = useState<Filter>('all')
+  const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
+  const [branchFilter, setBranchFilter] = useState<BranchFilter>('all')
   const [data, setData] = useState<CalendarMonth | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -353,12 +419,43 @@ export default function ContentCalendar({
   const current = data?.month === month ? data : null
   const entries = useMemo(() => {
     const result: Entry[] = []
-    for (const value of current?.posts ?? [])
-      if (filter === 'all' || filter === value.account)
-        result.push({ type: 'post', value })
-    for (const value of current?.schedules ?? [])
-      if (filter === 'all' || filter === value.account)
+    const originals = new Map<string, Extract<Entry, { type: 'post' }>>()
+    for (const value of current?.posts ?? []) {
+      const entry = { type: 'post', source: 'instagram', value } as const
+      originals.set(postKey(value.account, value.permalink), entry)
+      result.push(entry)
+    }
+    for (const value of current?.schedules ?? []) {
+      if (!value.permalink) {
         result.push({ type: 'plan', value })
+        continue
+      }
+      const account = value.account
+      if (!account) continue
+      const key = postKey(account, value.permalink)
+      const original = originals.get(key)
+      if (original) {
+        original.registration = value
+      } else {
+        const cover =
+          value.account === 'jbgolfacademy'
+            ? reviewedAds.find((ad) => postKey(account, ad.postUrl) === key)
+                ?.thumbnailUrl
+            : null
+        result.push({
+          type: 'post',
+          source: 'manual',
+          registration: value,
+          value: {
+            ...value,
+            account,
+            permalink: value.permalink,
+            thumbnailUrl: cover ?? null,
+            time: value.time ?? '',
+          },
+        })
+      }
+    }
     result.sort(
       (a, b) =>
         a.value.date.localeCompare(b.value.date) ||
@@ -366,27 +463,37 @@ export default function ContentCalendar({
         a.value.title.localeCompare(b.value.title),
     )
     return result
-  }, [current, filter])
+  }, [current, reviewedAds])
+  const calendarEntries = useMemo(
+    () =>
+      entries.filter(({ value }) => {
+        const { brand, branch } = scheduleOwner(value)
+        if (brandFilter === 'all') return true
+        if (brand !== brandFilter) return false
+        return (
+          brand !== 'club' ||
+          branchFilter === 'all' ||
+          (branch ?? 'unspecified') === branchFilter
+        )
+      }),
+    [entries, brandFilter, branchFilter],
+  )
   const perDay = useMemo(() => {
     const result = new Map<string, Entry[]>()
-    for (const entry of entries) {
+    for (const entry of calendarEntries) {
       const date = entry.value.date
       const rows = result.get(date)
       if (rows) rows.push(entry)
       else result.set(date, [entry])
     }
     return result
-  }, [entries])
-  const published = entries.filter((row) => row.type === 'post').reverse()
-  const plans = entries.filter((row) => row.type === 'plan')
+  }, [calendarEntries])
+  const published = entries
+    .filter((row) => row.type === 'post')
+    .filter((row) => filter === 'all' || filter === row.value.account)
+    .reverse()
+  const plans = calendarEntries.filter((row) => row.type === 'plan')
   const dates = calendarDates(month)
-  const activeAccounts = (current?.accounts ?? []).filter(
-    (row) => filter === 'all' || row.account === filter,
-  )
-  const incompleteAccounts = activeAccounts.filter(
-    (row) => row.status !== 'connected',
-  )
-  const missing = incompleteAccounts.length > 0
   function open(next: NonNullable<Panel>) {
     if (!panel)
       opener.current =
@@ -398,28 +505,41 @@ export default function ContentCalendar({
     setConflict(false)
     setPanel(next)
   }
-  function editor(date: string, item?: CalendarSchedule) {
+  function editor(
+    date: string,
+    item?: CalendarSchedule,
+    published = Boolean(item?.permalink),
+  ) {
     if (readFeed) return
     const initial: CalendarScheduleInput = item
       ? {
-          account: item.account,
+          account: published ? item.account : null,
+          ...(!published ? scheduleOwner(item) : {}),
           kind: item.kind,
           title: item.title,
           date: item.date,
           time: item.time,
           note: item.note,
+          permalink: item.permalink ?? null,
         }
       : {
-          account: filter === 'all' ? CALENDAR_ACCOUNTS[0] : filter,
+          account: published
+            ? filter === 'all'
+              ? CALENDAR_ACCOUNTS[0]
+              : filter
+            : null,
+          ...(!published ? { branch: null } : {}),
           date,
           kind: 'post',
           title: '',
           time: null,
           note: '',
+          permalink: null,
         }
     setDraft(initial)
     open({
       type: 'editor',
+      published,
       original: item ?? null,
       id: item?.id ?? crypto.randomUUID(),
       fromDay: panel?.type === 'day' ? panel.date : null,
@@ -450,11 +570,30 @@ export default function ContentCalendar({
       return
     const active = session.current
     if (!active || active.signal.aborted) return
+    if (
+      action === 'save' &&
+      !panel.published &&
+      (!draft.brand || (draft.brand === 'club' && !draft.branch))
+    ) {
+      setActionError(
+        '브랜드를 선택하고 JB골프클럽 일정에는 지점을 선택해 주세요.',
+      )
+      return
+    }
     writeLock.current = true
     setBusy(true)
     setActionError('')
     const original = panel.original
     try {
+      const linkedPost = draft.account
+        ? parseCalendarPermalink(draft.permalink, draft.account)
+        : null
+      if (action === 'save' && panel.published && !linkedPost) {
+        setActionError(
+          '선택한 계정의 Instagram 게시물 또는 릴스 원문 주소를 입력해 주세요.',
+        )
+        return
+      }
       const method = action === 'delete' ? 'DELETE' : original ? 'PUT' : 'POST'
       const path =
         api +
@@ -466,6 +605,9 @@ export default function ContentCalendar({
           : {
               ...draft,
               title: draft.title.trim(),
+              ...(panel.published && linkedPost
+                ? { permalink: linkedPost.permalink, kind: linkedPost.kind }
+                : {}),
               ...(original ? { version: original.version } : { id: panel.id }),
             }
       const res = await fetch(path, {
@@ -485,6 +627,16 @@ export default function ContentCalendar({
         return
       }
       if (res.status === 409 || res.status === 404) {
+        if (
+          res.status === 409 &&
+          (await res.json().catch(() => null))?.error?.code ===
+            'calendar_duplicate_permalink'
+        ) {
+          setActionError(
+            '이 계정에 이미 등록된 원문입니다. 게시된 콘텐츠에서 확인해 주세요.',
+          )
+          return
+        }
         setConflict(true)
         setConfirmDelete(false)
         setActionError(
@@ -514,15 +666,30 @@ export default function ContentCalendar({
             }
           : prev,
       )
-      if (action === 'save' && filter !== 'all' && draft.account !== filter)
+      if (
+        action === 'save' &&
+        panel.published &&
+        filter !== 'all' &&
+        draft.account
+      )
         setFilter(draft.account)
+      if (
+        action === 'save' &&
+        !panel.published &&
+        brandFilter !== 'all' &&
+        draft.brand
+      ) {
+        setBrandFilter(draft.brand)
+        if (branchFilter !== 'all') setBranchFilter(draft.branch ?? 'all')
+      }
       setMonth(targetMonth)
       setReload((n) => n + 1)
       setPanel(null)
       setDraft(null)
       setConfirmDelete(false)
       setNotice(
-        action === 'delete' ? '일정을 삭제했습니다.' : '일정을 저장했습니다.',
+        (panel.published ? '게시물 링크를 ' : '일정을 ') +
+          (action === 'delete' ? '삭제했습니다.' : '저장했습니다.'),
       )
     } catch {
       if (!active.signal.aborted)
@@ -603,259 +770,272 @@ export default function ContentCalendar({
   const dailyEntries =
     panel?.type === 'day' ? (perDay.get(panel.date) ?? []) : []
   return (
-    <section className="cc" aria-label="인스타그램 콘텐츠 캘린더">
-      <header className="cc-header">
-        <h1>콘텐츠 캘린더</h1>
-        {!readFeed && (
-          <button
-            ref={defaultFocus}
-            type="button"
-            className="cc-primary"
-            onClick={() =>
-              editor(today.startsWith(month) ? today : month + '-01')
-            }
-          >
-            <Plus size={17} aria-hidden="true" />
-            일정 등록
-          </button>
-        )}
-      </header>
-      <div className="cc-toolbar">
-        <div className="cc-month">
-          <h2 aria-live="polite">{displayMonth(month)}</h2>
-          <div className="cc-switch-month">
-            <button
-              type="button"
-              aria-label="이전 달"
-              onClick={() => setMonth(shiftMonth(month, -1))}
-            >
-              <ChevronLeft size={18} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => setMonth(today.slice(0, 7))}>
-              오늘
-            </button>
-            <button
-              type="button"
-              aria-label="다음 달"
-              onClick={() => setMonth(shiftMonth(month, 1))}
-            >
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        {!readFeed && (
-          <button
-            type="button"
-            className="cc-manage"
-            onClick={() => open({ type: 'accounts' })}
-          >
-            <Link2 size={16} aria-hidden="true" />
-            계정 관리
-          </button>
-        )}
-      </div>
-      <div className="cc-filter" role="group" aria-label="표시할 계정">
-        <button
-          type="button"
-          aria-pressed={filter === 'all'}
-          onClick={() => setFilter('all')}
-        >
-          전체 계정
-        </button>
-        {CALENDAR_ACCOUNTS.map((account) => (
-          <button
-            type="button"
-            key={account}
-            title={'@' + account}
-            aria-label={accountLabels[account]}
-            aria-pressed={filter === account}
-            onClick={() => setFilter(account)}
-          >
-            <span className="cc-account-full">{accountLabels[account]}</span>
-            <span className="cc-account-short" aria-hidden="true">
-              {accountLabels[account].replace('골프클럽 ', '')}
-            </span>
-          </button>
-        ))}
-      </div>
+    <section
+      className="cc"
+      aria-label={
+        view === 'gallery' ? '인스타 게시물 모아보기' : '콘텐츠 캘린더'
+      }
+    >
       {notice && (
         <p className="cc-notice" role="status">
           {notice}
           <button
-            aria-label="알림 닫기"
             type="button"
+            aria-label="알림 닫기"
             onClick={() => setNotice('')}
           >
             <X size={15} />
           </button>
         </p>
       )}
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button className="cc-text" onClick={() => setReload((n) => n + 1)}>
-            다시 불러오기
-          </button>
-        </Notice>
-      )}
-      {!current && !error && (
-        <p className="cc-loading" role="status">
-          이달의 콘텐츠를 불러오는 중입니다.
-        </p>
-      )}
-      {current && missing && (
-        <p className="cc-sync-note">
-          {activeAccounts.every(
-            (a) =>
-              a.status === 'setup_required' || a.status === 'needs_connection',
-          )
-            ? 'Instagram 계정을 연결하면 게시물과 릴스가 달력에 표시됩니다.'
-            : incompleteAccounts
-                .map(
-                  ({ account, status }) =>
-                    accountLabels[account] + ' · ' + statusLabels[status],
-                )
-                .join(' / ')}{' '}
-          {!readFeed && (
+      {view === 'gallery' ? (
+        <InstagramPosts
+          month={month}
+          onMonthChange={setMonth}
+          filter={filter}
+          onFilterChange={setFilter}
+          posts={published}
+          accounts={current?.accounts ?? []}
+          reviewedAds={reviewedAds}
+          loading={!current && !error}
+          error={error}
+          onRetry={() => setReload((n) => n + 1)}
+          onManage={readFeed ? undefined : () => open({ type: 'accounts' })}
+          onRegister={readFeed ? undefined : () => editor('', undefined, true)}
+          onEdit={readFeed ? undefined : (p) => editor(p.date, p, true)}
+        />
+      ) : (
+        <>
+          <header className="cc-header">
+            <h1>콘텐츠 캘린더</h1>
+            {!readFeed && (
+              <button
+                ref={defaultFocus}
+                type="button"
+                className="cc-primary"
+                onClick={() =>
+                  editor(today.startsWith(month) ? today : month + '-01')
+                }
+              >
+                <Plus size={17} aria-hidden="true" />
+                일정 등록
+              </button>
+            )}
+          </header>
+          <div className="cc-toolbar">
+            <div className="cc-month">
+              <h2 aria-live="polite">{displayMonth(month)}</h2>
+              <div className="cc-switch-month">
+                <button
+                  type="button"
+                  aria-label="이전 달"
+                  onClick={() => setMonth(shiftMonth(month, -1))}
+                >
+                  <ChevronLeft size={18} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonth(today.slice(0, 7))}
+                >
+                  오늘
+                </button>
+                <button
+                  type="button"
+                  aria-label="다음 달"
+                  onClick={() => setMonth(shiftMonth(month, 1))}
+                >
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="cc-filter" role="group" aria-label="표시할 브랜드">
             <button
               type="button"
-              className="cc-text"
-              onClick={() => open({ type: 'accounts' })}
+              aria-pressed={brandFilter === 'all'}
+              onClick={() => {
+                setBrandFilter('all')
+                setBranchFilter('all')
+              }}
             >
-              연결 상태 보기
+              전체
             </button>
-          )}
-        </p>
-      )}
-      <div
-        className="cc-calendar"
-        role="group"
-        aria-label={displayMonth(month) + ' 콘텐츠 달력'}
-      >
-        <div className="cc-weekdays" aria-hidden="true">
-          {weekdays.map((d) => (
-            <span key={d}>{d}</span>
-          ))}
-        </div>
-        <div className="cc-grid">
-          {dates.map((date, index) => {
-            const dateNum = Number(date.slice(-2))
-            if (!date.startsWith(month))
-              return (
-                <div className="cc-outside" key={date} aria-hidden="true">
-                  {dateNum}
-                </div>
-              )
-            const items = perDay.get(date) ?? []
-            const previews =
-              items.length <= 2
-                ? items
-                : [
-                    ...items.filter(
-                      (item) => item.type === 'post' && item.value.thumbnailUrl,
-                    ),
-                    ...items.filter(
-                      (item) =>
-                        item.type === 'plan' || !item.value.thumbnailUrl,
-                    ),
-                  ].slice(0, 2)
-            return (
+            {(Object.keys(CALENDAR_BRANDS) as CalendarBrand[]).map((brand) => (
               <button
                 type="button"
-                id={'cc-day-' + date}
-                className={'cc-day' + (date === today ? ' cc-today' : '')}
-                key={date}
-                aria-label={
-                  date +
-                  (date === today ? ' 오늘' : '') +
-                  ', 콘텐츠 ' +
-                  items.length +
-                  '개'
-                }
-                onKeyDown={(e) => dayKeys(e, index)}
-                onClick={() => open({ type: 'day', date })}
+                key={brand}
+                aria-pressed={brandFilter === brand}
+                data-color={brand}
+                onClick={() => {
+                  setBrandFilter(brand)
+                  setBranchFilter('all')
+                }}
               >
-                <span className="cc-day-top">
-                  <span
-                    className="cc-number"
-                    aria-current={date === today ? 'date' : undefined}
-                  >
-                    {dateNum}
-                  </span>
-                  {items.length > 2 && (
-                    <span className="cc-more">+{items.length - 2}</span>
-                  )}
-                </span>
-                <span className="cc-previews">
-                  {previews.map((entry) => (
-                    <span
-                      className={
-                        'cc-preview ' +
-                        (entry.type === 'post' ? 'cc-published' : 'cc-planned')
-                      }
-                      key={entryKey(entry)}
-                    >
-                      <Thumbnail entry={entry} />
-                      <span className="cc-compact-caption">
-                        {entry.type === 'plan'
-                          ? '일정'
-                          : accountLabels[entry.value.account].replace(
-                              '골프클럽 ',
-                              '',
-                            )}
-                      </span>
-                      <span className="cc-preview-copy">
-                        <strong>
-                          {entry.value.title || kindLabels[entry.value.kind]}
-                        </strong>
-                        <small>
-                          {accountLabels[entry.value.account]} ·{' '}
-                          {entry.type === 'plan'
-                            ? '예정'
-                            : kindLabels[entry.value.kind]}
-                        </small>
-                      </span>
-                    </span>
-                  ))}
-                </span>
+                {CALENDAR_BRANDS[brand]}
               </button>
-            )
-          })}
-        </div>
-      </div>
-      {current && (
-        <div className="cc-agenda">
-          <section>
-            <h2>
-              게시된 콘텐츠 <span>{published.length}</span>
-            </h2>
-            {published.length ? (
-              <AgendaList
-                entries={published}
-                onEdit={readFeed ? undefined : (p) => editor(p.date, p)}
-              />
-            ) : (
-              <p>
-                {missing
-                  ? '아직 가져온 게시물이 없습니다.'
-                  : '이달에 가져온 게시물이 없습니다.'}
-              </p>
-            )}
-          </section>
-          <section>
-            <h2>
-              등록한 일정 <span>{plans.length}</span>
-            </h2>
-            {plans.length ? (
-              <AgendaList
-                entries={plans}
-                onEdit={readFeed ? undefined : (p) => editor(p.date, p)}
-              />
-            ) : (
-              <p>이달에 등록한 일정이 없습니다.</p>
-            )}
-          </section>
-        </div>
+            ))}
+          </div>
+          {brandFilter === 'club' && (
+            <div
+              className="cc-filter cc-branch-filter"
+              role="group"
+              aria-label="표시할 지점"
+            >
+              <button
+                type="button"
+                aria-pressed={branchFilter === 'all'}
+                onClick={() => setBranchFilter('all')}
+              >
+                전체 지점
+              </button>
+              {(Object.keys(CALENDAR_BRANCHES) as CalendarBranch[]).map(
+                (branch) => (
+                  <button
+                    key={branch}
+                    type="button"
+                    data-color={branch}
+                    aria-pressed={branchFilter === branch}
+                    onClick={() => setBranchFilter(branch)}
+                  >
+                    {CALENDAR_BRANCHES[branch]}
+                  </button>
+                ),
+              )}
+              {entries.some(({ value }) => {
+                const owner = scheduleOwner(value)
+                return owner.brand === 'club' && !owner.branch
+              }) && (
+                <button
+                  type="button"
+                  data-color="unspecified"
+                  aria-pressed={branchFilter === 'unspecified'}
+                  onClick={() => setBranchFilter('unspecified')}
+                >
+                  지점 미지정
+                </button>
+              )}
+            </div>
+          )}
+          {error && (
+            <Notice>
+              {error}{' '}
+              <button
+                className="cc-text"
+                onClick={() => setReload((n) => n + 1)}
+              >
+                다시 불러오기
+              </button>
+            </Notice>
+          )}
+          {!current && !error && (
+            <p className="cc-loading" role="status">
+              이달의 콘텐츠를 불러오는 중입니다.
+            </p>
+          )}
+          <div
+            className="cc-calendar"
+            role="group"
+            aria-label={displayMonth(month) + ' 콘텐츠 달력'}
+          >
+            <div className="cc-weekdays" aria-hidden="true">
+              {weekdays.map((d) => (
+                <span key={d}>{d}</span>
+              ))}
+            </div>
+            <div className="cc-grid">
+              {dates.map((date, index) => {
+                const dateNum = Number(date.slice(-2))
+                if (!date.startsWith(month))
+                  return (
+                    <div className="cc-outside" key={date} aria-hidden="true">
+                      {dateNum}
+                    </div>
+                  )
+                const items = perDay.get(date) ?? []
+                const previews =
+                  items.length <= 2
+                    ? items
+                    : [
+                        ...items.filter((item) => item.type === 'plan'),
+                        ...items.filter((item) => item.type === 'post'),
+                      ].slice(0, 2)
+                return (
+                  <button
+                    type="button"
+                    id={'cc-day-' + date}
+                    className={'cc-day' + (date === today ? ' cc-today' : '')}
+                    key={date}
+                    aria-label={
+                      date +
+                      (date === today ? ' 오늘' : '') +
+                      ', 콘텐츠 ' +
+                      items.length +
+                      '개'
+                    }
+                    onKeyDown={(e) => dayKeys(e, index)}
+                    onClick={() => open({ type: 'day', date })}
+                  >
+                    <span className="cc-day-top">
+                      <span
+                        className="cc-number"
+                        aria-current={date === today ? 'date' : undefined}
+                      >
+                        {dateNum}
+                      </span>
+                      {items.length > 2 && (
+                        <span className="cc-more">+{items.length - 2}</span>
+                      )}
+                    </span>
+                    <span className="cc-previews">
+                      {previews.map((entry) => (
+                        <span
+                          className={
+                            'cc-preview ' +
+                            (entry.type === 'post'
+                              ? 'cc-published'
+                              : 'cc-planned')
+                          }
+                          key={entryKey(entry)}
+                        >
+                          <Thumbnail entry={entry} />
+                          <span className="cc-compact-caption">
+                            <BrandMark item={entry.value} compact />
+                          </span>
+                          <span className="cc-preview-copy">
+                            <strong>
+                              {entry.value.title ||
+                                kindLabels[entry.value.kind]}
+                            </strong>
+                            <small>
+                              <BrandMark item={entry.value} compact />
+                            </small>
+                          </span>
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          {current && (
+            <div className="cc-agenda cc-schedule-agenda">
+              <section>
+                <h2>
+                  등록한 일정 <span>{plans.length}</span>
+                </h2>
+                {plans.length ? (
+                  <AgendaList
+                    entries={plans}
+                    onEdit={readFeed ? undefined : (p) => editor(p.date, p)}
+                  />
+                ) : (
+                  <p>이달에 등록한 일정이 없습니다.</p>
+                )}
+              </section>
+            </div>
+          )}
+        </>
       )}
       <Dialog
         open={panel !== null}
@@ -883,10 +1063,16 @@ export default function ContentCalendar({
                   : panel.type === 'day'
                     ? longDay.format(utcDate(panel.date))
                     : confirmDelete
-                      ? '일정 삭제'
-                      : panel.original
-                        ? '일정 수정'
-                        : '일정 등록'}
+                      ? panel.published
+                        ? '게시물 링크 삭제'
+                        : '일정 삭제'
+                      : panel.published
+                        ? panel.original
+                          ? '게시물 링크 수정'
+                          : '게시물 링크 등록'
+                        : panel.original
+                          ? '일정 수정'
+                          : '일정 등록'}
               </DialogTitle>
               <button
                 type="button"
@@ -1044,7 +1230,8 @@ export default function ContentCalendar({
                 <>
                   <div className="cc-dialog-body">
                     <p>
-                      <strong>{panel.original?.title}</strong> 일정을
+                      캘린더에서 <strong>{panel.original?.title}</strong>
+                      {panel.published ? ' 게시물 링크를' : ' 일정을'}{' '}
                       삭제할까요?
                     </p>
                     {actionError && <Notice>{actionError}</Notice>}
@@ -1073,56 +1260,128 @@ export default function ContentCalendar({
                   <fieldset
                     className="cc-dialog-body cc-fields"
                     disabled={busy || conflict}
-                    aria-label="일정 정보"
+                    aria-label={
+                      panel.published ? '게시물 링크 정보' : '일정 정보'
+                    }
                   >
+                    {!panel.published && (
+                      <>
+                        <fieldset className="cc-kind cc-wide cc-brand-choices">
+                          <legend>브랜드</legend>
+                          {(
+                            Object.keys(CALENDAR_BRANDS) as CalendarBrand[]
+                          ).map((brand) => (
+                            <label key={brand}>
+                              <input
+                                type="radio"
+                                name="schedule-brand"
+                                required
+                                checked={draft.brand === brand}
+                                onChange={() => {
+                                  setDraft({
+                                    ...draft,
+                                    brand,
+                                    branch: null,
+                                    account: null,
+                                  })
+                                  setActionError('')
+                                }}
+                              />
+                              <span data-color={brand}>
+                                {CALENDAR_BRANDS[brand]}
+                              </span>
+                            </label>
+                          ))}
+                        </fieldset>
+                        {draft.brand === 'club' && (
+                          <fieldset className="cc-kind cc-wide cc-brand-choices">
+                            <legend>지점</legend>
+                            {(
+                              Object.keys(CALENDAR_BRANCHES) as CalendarBranch[]
+                            ).map((branch) => (
+                              <label key={branch}>
+                                <input
+                                  type="radio"
+                                  name="schedule-branch"
+                                  required
+                                  checked={draft.branch === branch}
+                                  onChange={() => setField('branch', branch)}
+                                />
+                                <span data-color={branch}>
+                                  {CALENDAR_BRANCHES[branch]}
+                                </span>
+                              </label>
+                            ))}
+                          </fieldset>
+                        )}
+                      </>
+                    )}
                     <label className="cc-wide">
-                      일정 제목
+                      {panel.published ? '게시물 제목' : '일정 제목'}
                       <input
                         value={draft.title}
-                        autoFocus
+                        autoFocus={panel.published}
                         maxLength={CALENDAR_LIMITS.title}
                         required
                         onChange={(e) => setField('title', e.target.value)}
                       />
                     </label>
-                    <label className="cc-wide">
-                      계정
-                      <select
-                        value={draft.account}
-                        onChange={(e) =>
-                          setField('account', e.target.value as Account)
-                        }
-                      >
-                        {CALENDAR_ACCOUNTS.map((a) => (
-                          <option key={a} value={a}>
-                            @{a}
-                          </option>
+                    {panel.published && (
+                      <label className="cc-wide">
+                        계정
+                        <select
+                          value={draft.account ?? ''}
+                          onChange={(e) =>
+                            setField('account', e.target.value as Account)
+                          }
+                        >
+                          {CALENDAR_ACCOUNTS.map((a) => (
+                            <option key={a} value={a}>
+                              @{a}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {panel.published ? (
+                      <label className="cc-wide">
+                        Instagram 원문 주소
+                        <input
+                          type="url"
+                          value={draft.permalink ?? ''}
+                          required
+                          maxLength={2048}
+                          onChange={(e) =>
+                            setField('permalink', e.target.value)
+                          }
+                        />
+                      </label>
+                    ) : (
+                      <fieldset className="cc-kind cc-wide">
+                        <legend>콘텐츠 유형</legend>
+                        {(['post', 'reel'] as const).map((kind) => (
+                          <label key={kind}>
+                            <input
+                              type="radio"
+                              name="cc-kind"
+                              value={kind}
+                              checked={draft.kind === kind}
+                              onChange={() => setField('kind', kind)}
+                            />
+                            <span>
+                              <EntryIcon kind={kind} />
+                              {kindLabels[kind]}
+                            </span>
+                          </label>
                         ))}
-                      </select>
-                    </label>
-                    <fieldset className="cc-kind cc-wide">
-                      <legend>콘텐츠 유형</legend>
-                      {(['post', 'reel'] as const).map((kind) => (
-                        <label key={kind}>
-                          <input
-                            type="radio"
-                            name="cc-kind"
-                            value={kind}
-                            checked={draft.kind === kind}
-                            onChange={() => setField('kind', kind)}
-                          />
-                          <span>
-                            <EntryIcon kind={kind} />
-                            {kindLabels[kind]}
-                          </span>
-                        </label>
-                      ))}
-                    </fieldset>
+                      </fieldset>
+                    )}
                     <label>
-                      날짜
+                      {panel.published ? '실제 게시일' : '날짜'}
                       <input
                         required
                         type="date"
+                        max={panel.published ? today : undefined}
                         value={draft.date}
                         onChange={(e) => setField('date', e.target.value)}
                       />
@@ -1178,7 +1437,7 @@ export default function ContentCalendar({
                         }}
                       >
                         <Trash2 size={16} aria-hidden="true" />
-                        일정 삭제
+                        {panel.published ? '게시물 링크 삭제' : '일정 삭제'}
                       </button>
                     )}
                     <button
@@ -1191,7 +1450,15 @@ export default function ContentCalendar({
                     </button>
                     <button
                       className="cc-primary"
-                      disabled={busy || conflict || !draft.title.trim()}
+                      disabled={
+                        busy ||
+                        conflict ||
+                        !draft.title.trim() ||
+                        (!panel.published &&
+                          (!draft.brand ||
+                            (draft.brand === 'club' && !draft.branch))) ||
+                        (panel.published && !draft.permalink?.trim())
+                      }
                     >
                       {busy ? '저장 중…' : '저장'}
                     </button>

@@ -28,6 +28,8 @@ const migrations = await Promise.all(
     '0010_calendar_schedules',
     '0011_calendar_instagram',
     '0013_staff_access',
+    '0014_calendar_links',
+    '0016_calendar_brands',
   ].map((n) => readFile('worker/migrations/' + n + '.sql', 'utf8')),
 )
 
@@ -200,7 +202,7 @@ test('verified professional grant syncs actual media, KST boundaries, image CDN 
     f.reply(null, head)
     assert.equal(
       (await f.finish(pending)).headers.get('Location'),
-      origin + '/?calendar_instagram=connected#calendar',
+      origin + '/?calendar_instagram=connected#instagram-posts',
     )
     const initial = await f.month()
     assert.equal(

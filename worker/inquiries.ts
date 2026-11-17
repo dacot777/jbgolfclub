@@ -4,6 +4,7 @@ import {
   ASSIGNEE_LABELS,
   BRANCH_LABELS,
   CHANNEL_LABELS,
+  CUSTOMER_TYPE_LABELS,
   INQUIRY_LIMITS,
   PRODUCT_LABELS,
   SOURCE_LABELS,
@@ -12,12 +13,12 @@ import {
   type InquiryInput,
 } from '../src/lib/inquiry-types'
 
-type PrivateFields = Pick<InquiryInput, keyof typeof INQUIRY_LIMITS>
+type PrivateFields = Required<Pick<InquiryInput, keyof typeof INQUIRY_LIMITS>>
 type InquiryRow = Omit<Inquiry, keyof PrivateFields> & {
   privateFields: string | null
   creationFingerprint: string | null
 }
-const columns = `id,version,first_date AS firstDate,product,channel,source,ad_id AS adId,stage,assignee,branch,
+const columns = `id,version,first_date AS firstDate,product,channel,source,ad_id AS adId,stage,assignee,branch,customer_type AS customerType,
   private_fields AS privateFields,creation_fingerprint AS creationFingerprint`
 const emptyFields: PrivateFields = {
   name: '',
@@ -94,21 +95,33 @@ function inputFrom(raw: Record<string, unknown>): InquiryInput {
     name: textField(raw.name, INQUIRY_LIMITS.name),
     contact: textField(raw.contact, INQUIRY_LIMITS.contact),
     note: textField(raw.note, INQUIRY_LIMITS.note),
-    nextAction: textField(raw.nextAction, INQUIRY_LIMITS.nextAction),
+    nextAction:
+      raw.nextAction === undefined
+        ? ''
+        : textField(raw.nextAction, INQUIRY_LIMITS.nextAction),
     branch: raw.branch == null ? null : option(raw.branch, BRANCH_LABELS),
+    customerType:
+      raw.customerType == null
+        ? null
+        : option(raw.customerType, CUSTOMER_TYPE_LABELS),
   }
+}
+async function readPrivateFields(
+  env: Env,
+  id: string,
+  encrypted: string | null,
+): Promise<PrivateFields> {
+  if (encrypted === null) return emptyFields
+  const plaintext = await decryptToken(
+    encrypted,
+    env.TOKEN_ENCRYPTION_KEY,
+    'jbgolf:inquiry:v1:' + id,
+  )
+  return JSON.parse(plaintext) as PrivateFields
 }
 async function itemFrom(row: InquiryRow, env: Env): Promise<Inquiry> {
   const { privateFields, creationFingerprint: _fingerprint, ...data } = row
-  let fields = emptyFields
-  if (privateFields !== null) {
-    const plaintext = await decryptToken(
-      privateFields,
-      env.TOKEN_ENCRYPTION_KEY,
-      'jbgolf:inquiry:v1:' + row.id,
-    )
-    fields = JSON.parse(plaintext) as PrivateFields
-  }
+  const fields = await readPrivateFields(env, row.id, privateFields)
   return {
     ...data,
     name: fields.name,
@@ -155,13 +168,17 @@ export async function createInquiry(
   const id = idFrom(raw.id)
   const input = inputFrom(raw)
   // A keyed fingerprint permits a delayed retry after an edit without storing or exposing the original personal fields.
-  const { branch, ...legacyFields } = input
-  // Keep existing fingerprints valid for retries of creates without an assigned branch.
+  const { branch, customerType, ...legacyFields } = input
+  // Older creates omitted unset classifications and used a blank nextAction.
   const fingerprint = await fingerprintFor(
     'inquiry-create:' +
       id +
       ':' +
-      JSON.stringify(branch === null ? legacyFields : input),
+      JSON.stringify({
+        ...legacyFields,
+        ...(branch === null ? {} : { branch }),
+        ...(customerType === null ? {} : { customerType }),
+      }),
   )
   const existing = () =>
     env.DB.prepare(`SELECT ${columns} FROM inquiries WHERE id=?`)
@@ -171,8 +188,8 @@ export async function createInquiry(
   if (!row) {
     await confirmAd(env, input.adId)
     row = await env.DB.prepare(
-      `INSERT INTO inquiries(id,created_at,first_date,product,channel,source,ad_id,stage,assignee,private_fields,creation_fingerprint,branch)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM deleted_inquiry_ids WHERE id=?)
+      `INSERT INTO inquiries(id,created_at,first_date,product,channel,source,ad_id,stage,assignee,private_fields,creation_fingerprint,branch,customer_type)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM deleted_inquiry_ids WHERE id=?)
       ON CONFLICT(id) DO NOTHING RETURNING ${columns}`,
     )
       .bind(
@@ -188,6 +205,7 @@ export async function createInquiry(
         await privateFields(env, id, input),
         fingerprint,
         branch,
+        customerType,
         id,
       )
       .first<InquiryRow>()
@@ -207,17 +225,26 @@ export async function updateInquiry(
   const version = versionFrom(raw.version)
   const input = inputFrom(raw)
   const original = await env.DB.prepare(
-    'SELECT version,ad_id AS adId,branch FROM inquiries WHERE id=?',
+    'SELECT version,ad_id AS adId,branch,customer_type AS customerType,private_fields AS privateFields FROM inquiries WHERE id=?',
   )
     .bind(id)
-    .first<Pick<Inquiry, 'version' | 'adId' | 'branch'>>()
+    .first<
+      Pick<
+        InquiryRow,
+        'version' | 'adId' | 'branch' | 'customerType' | 'privateFields'
+      >
+    >()
   if (!original) throw new InquiryError('inquiry_not_found', 404)
   if (original.version !== version)
     throw new InquiryError('inquiry_conflict', 409)
   if (original.adId !== input.adId) await confirmAd(env, input.adId)
+  if (raw.nextAction === undefined && original.privateFields !== null)
+    input.nextAction = (
+      await readPrivateFields(env, id, original.privateFields)
+    ).nextAction
   const row = await env.DB.prepare(
     `UPDATE inquiries SET first_date=?,product=?,channel=?,source=?,ad_id=?,stage=?,assignee=?,
-      private_fields=?,branch=?,version=version+1 WHERE id=? AND version=? RETURNING ${columns}`,
+      private_fields=?,branch=?,customer_type=?,version=version+1 WHERE id=? AND version=? RETURNING ${columns}`,
   )
     .bind(
       input.firstDate,
@@ -229,6 +256,9 @@ export async function updateInquiry(
       input.assignee,
       await privateFields(env, id, input),
       raw.branch === undefined ? original.branch : input.branch,
+      raw.customerType === undefined
+        ? original.customerType
+        : input.customerType,
       id,
       original.version,
     )

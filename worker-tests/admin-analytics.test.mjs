@@ -244,6 +244,8 @@ test('calendar viewer links authorize only the month and thumbnails, rotate, exp
     '0010_calendar_schedules',
     '0011_calendar_instagram',
     '0012_calendar_share',
+    '0014_calendar_links',
+    '0016_calendar_brands',
   ])
   try {
     const ownerShare = '/api/admin/calendar/share'
@@ -381,9 +383,11 @@ test('calendar protects executive plans and monthly reads, including all three a
     '0001_single_instagram',
     '0010_calendar_schedules',
     '0011_calendar_instagram',
+    '0014_calendar_links',
+    '0016_calendar_brands',
   ])
   try {
-    const month = '/api/admin/calendar?month=2028-02'
+    const month = '/api/admin/calendar?month=2024-02'
     const schedules = '/api/admin/calendar/schedules'
     assert.equal((await f.send(month)).status, 401)
     assert.equal(
@@ -393,7 +397,7 @@ test('calendar protects executive plans and monthly reads, including all three a
     const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     assert.equal(
-      (await f.send('/api/admin/calendar?month=2028-13', { cookie })).status,
+      (await f.send('/api/admin/calendar?month=2024-13', { cookie })).status,
       400,
     )
     const empty = await (await f.send(month, { cookie })).json()
@@ -408,7 +412,7 @@ test('calendar protects executive plans and monthly reads, including all three a
     const plan = {
       id: randomUUID(),
       account: 'jbgolfacademy',
-      date: '2028-02-29',
+      date: '2024-02-29',
       time: null,
       kind: 'post',
       title: '테스트 촬영 일정',
@@ -431,36 +435,95 @@ test('calendar protects executive plans and monthly reads, including all three a
       { time: '24:00' },
       { time: '9:00' },
       { title: '   ' },
+      { date: '9999-12-31', permalink: 'https://www.instagram.com/p/X/' },
       { note: 'x'.repeat(2001) },
       { kind: 'paid_ad' },
       { account: 'unknown' },
+      { permalink: 'https://www.instagram.com/jbgolfclub_bundang/p/X/' },
+      { permalink: 'https://notinstagram.com/p/X/' },
+      { permalink: 'https://www.instagram.com/reel/X/' },
+      { permalink: 'https://www.instagram.com/jbgolfacademy/' },
+      { permalink: 'https://www.instagram.com@another.test/p/X/' },
     ]) {
       assert.equal((await create({ ...plan, ...invalid })).status, 400)
     }
     const april = {
       ...plan,
       id: randomUUID(),
-      date: '2028-04-01',
+      date: '2024-04-01',
       account: 'jbgolfclub_bundang',
       time: '00:00',
     }
     const feb = {
       ...plan,
       id: randomUUID(),
-      date: '2028-02-01',
+      date: '2024-02-01',
       account: 'jbgolfclub_official',
       time: '23:59',
       kind: 'reel',
+      permalink: 'https://www.instagram.com/reel/Synthetic/',
     }
     for (const input of [plan, april, feb]) {
       const res = await create(input)
       assert.equal(res.status, 200)
-      assert.deepEqual((await res.json()).item, { ...input, version: 1 })
+      assert.deepEqual((await res.json()).item, {
+        permalink: null,
+        brand: input.account === 'jbgolfacademy' ? 'academy' : 'club',
+        branch: input.account === 'jbgolfclub_bundang' ? 'seohyeon' : null,
+        ...input,
+        version: 1,
+      })
     }
+    const sharedCopy =
+      'https://instagram.com/JBGOLFCLUB_OFFICIAL/reels/Synthetic/?igsh=fixture#discard'
+    assert.equal(
+      (await create({ ...plan, id: randomUUID(), date: '9999-12-31' })).status,
+      200,
+    )
+    const canonicalRetry = await create({ ...feb, permalink: sharedCopy })
+    assert.equal(canonicalRetry.status, 200)
+    assert.equal((await canonicalRetry.json()).item.permalink, feb.permalink)
+    const duplicate = await create({
+      ...feb,
+      id: randomUUID(),
+      kind: 'post',
+      permalink: 'https://www.instagram.com/p/Synthetic/',
+    })
+    assert.equal(duplicate.status, 409)
+    assert.equal(
+      (await duplicate.json()).error.code,
+      'calendar_duplicate_permalink',
+    )
+    const editLinked = (data) =>
+      f.send(schedules + '/' + feb.id, {
+        cookie,
+        headers,
+        method: 'PUT',
+        body: data,
+      })
+    const { permalink, ...legacyInput } = feb
+    assert.equal(
+      (await editLinked({ ...legacyInput, date: '9999-12-31', version: 1 }))
+        .status,
+      409,
+    )
+    assert.equal(
+      (await (await editLinked({ ...legacyInput, version: 1 })).json()).item
+        .permalink,
+      permalink,
+    )
+    assert.equal(
+      (
+        await (
+          await editLinked({ ...legacyInput, version: 2, permalink: null })
+        ).json()
+      ).item.permalink,
+      null,
+    )
     const res = await f.send(month, { cookie })
     assert.match(res.headers.get('cache-control'), /no-store/)
     const response = await res.json()
-    assert.equal(response.month, '2028-02')
+    assert.equal(response.month, '2024-02')
     assert.deepEqual(
       response.schedules.map((row) => row.id),
       [feb.id, plan.id],
@@ -475,7 +538,7 @@ test('calendar protects executive plans and monthly reads, including all three a
           cookie,
           headers,
           method: 'PUT',
-          body: { ...plan, title, date: '2028-03-01', version: 1 },
+          body: { ...plan, title, date: '2024-03-01', version: 1 },
         }),
       ),
     )
@@ -490,7 +553,7 @@ test('calendar protects executive plans and monthly reads, including all three a
     assert.equal(
       (
         await (
-          await f.send('/api/admin/calendar?month=2028-03', { cookie })
+          await f.send('/api/admin/calendar?month=2024-03', { cookie })
         ).json()
       ).schedules[0].id,
       plan.id,
@@ -533,7 +596,7 @@ test('calendar protects executive plans and monthly reads, including all three a
     assert.equal(
       (
         await (
-          await f.send('/api/admin/calendar?month=2028-04', { cookie })
+          await f.send('/api/admin/calendar?month=2024-04', { cookie })
         ).json()
       ).schedules[0].id,
       april.id,
@@ -541,6 +604,173 @@ test('calendar protects executive plans and monthly reads, including all three a
   } finally {
     await f.mf.dispose()
   }
+})
+
+test('brand schedules preserve legacy IDs, links and retries and allow Haus or either club branch without Instagram', async (t) => {
+  const f = await fixture({}, [
+    '0001_single_instagram',
+    '0010_calendar_schedules',
+    '0011_calendar_instagram',
+    '0014_calendar_links',
+  ])
+  t.after(() => f.mf.dispose())
+  const id = randomUUID()
+  const old = {
+    account: 'jbgolfclub_official',
+    kind: 'reel',
+    date: '2024-02-20',
+    time: '12:15',
+    title: '링크 일정',
+    note: '비공개 메모',
+    permalink: 'https://www.instagram.com/reel/Old/',
+  }
+  const fingerprint = createHmac(
+    'sha256',
+    'test-only-key-abcdefghijklmnopqrstuvwxyz0123456789',
+  )
+    .update('calendar-create:' + id + ':' + JSON.stringify(old))
+    .digest('base64url')
+  const oldInsert =
+    'INSERT INTO calendar_schedules(id,version,account,kind,day,local_time,title,note,creation_fingerprint,permalink) VALUES(?,3,?,?,?,?,?,?,?,?)'
+  const retired = randomUUID()
+  await f.db.batch([
+    f.db
+      .prepare(oldInsert)
+      .bind(
+        id,
+        old.account,
+        old.kind,
+        old.date,
+        old.time,
+        old.title,
+        old.note,
+        fingerprint,
+        old.permalink,
+      ),
+    f.db
+      .prepare('INSERT INTO calendar_schedules(id,version) VALUES(?,4)')
+      .bind(retired),
+  ])
+  const sql = await readFile(
+    'worker/migrations/0016_calendar_brands.sql',
+    'utf8',
+  )
+  await f.db.batch(
+    sql
+      .split(';')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => f.db.prepare(s)),
+  )
+  const { cookie, csrfToken } = await f.activate()
+  const options = { cookie, headers: { 'X-CSRF-Token': csrfToken } }
+  const path = '/api/admin/calendar/schedules'
+  const create = (body) => f.send(path, { ...options, body })
+  const replay = await create({ ...old, id })
+  assert.equal(replay.status, 200)
+  assert.deepEqual((await replay.json()).item, {
+    ...old,
+    id,
+    version: 3,
+    brand: 'club',
+    branch: null,
+  })
+  assert.equal((await create({ ...old, id: retired })).status, 409)
+  const late = randomUUID()
+  await f.db
+    .prepare(oldInsert)
+    .bind(
+      late,
+      'jbgolfclub_bundang',
+      'post',
+      old.date,
+      null,
+      '기존 클라이언트',
+      '메모',
+      'legacy-grant',
+      null,
+    )
+    .run()
+  assert.deepEqual(
+    await f.db
+      .prepare('SELECT brand,branch FROM calendar_schedules WHERE id=?')
+      .bind(late)
+      .first(),
+    { brand: 'club', branch: 'seohyeon' },
+  )
+  await f.db
+    .prepare("UPDATE calendar_schedules SET account='jbgolfacademy' WHERE id=?")
+    .bind(late)
+    .run()
+  assert.deepEqual(
+    await f.db
+      .prepare('SELECT brand,branch FROM calendar_schedules WHERE id=?')
+      .bind(late)
+      .first(),
+    { brand: 'academy', branch: null },
+  )
+
+  const plan = {
+    id: randomUUID(),
+    account: null,
+    kind: 'post',
+    date: '2030-04-08',
+    time: null,
+    title: '새 일정',
+    note: '업무 메모',
+    brand: 'haus',
+    branch: null,
+  }
+  for (const invalid of [
+    { brand: 'club', branch: null },
+    { brand: 'club', branch: 'other' },
+    { brand: 'other' },
+    { brand: 'academy', branch: 'cheongdam' },
+    { brand: 'haus', account: 'jbgolfacademy' },
+    { date: old.date, permalink: 'https://www.instagram.com/p/Haus/' },
+    { brand: null, account: null },
+  ])
+    assert.equal((await create({ ...plan, ...invalid })).status, 400)
+  const added = await create(plan)
+  assert.equal(added.status, 200)
+  assert.deepEqual((await added.json()).item, {
+    ...plan,
+    permalink: null,
+    version: 1,
+  })
+  for (const [index, branch] of ['cheongdam', 'seohyeon'].entries()) {
+    const changed = await f.send(path + '/' + plan.id, {
+      ...options,
+      method: 'PUT',
+      body: { ...plan, brand: 'club', branch, version: index + 1 },
+    })
+    assert.equal(changed.status, 200)
+    assert.deepEqual((await changed.json()).item, {
+      ...plan,
+      brand: 'club',
+      branch,
+      permalink: null,
+      version: index + 2,
+    })
+  }
+  assert.equal((await (await create(plan)).json()).item.branch, 'seohyeon')
+  assert.equal((await create({ ...plan, brand: 'academy' })).status, 409)
+  assert.equal(
+    (
+      await f.send(path + '/' + plan.id, {
+        ...options,
+        method: 'DELETE',
+        body: { version: 3 },
+      })
+    ).status,
+    200,
+  )
+  const tombstone = await f.db
+    .prepare('SELECT * FROM calendar_schedules WHERE id=?')
+    .bind(plan.id)
+    .first()
+  for (const [key, val] of Object.entries(tombstone))
+    if (!['id', 'version'].includes(key)) assert.equal(val, null)
 })
 
 async function inquiriesFixture({ legacy = false } = {}) {
@@ -554,7 +784,9 @@ async function inquiriesFixture({ legacy = false } = {}) {
       '0005_meta_ads',
       '0006_meta_ad_registry',
       '0008_inquiries',
-      ...(legacy ? [] : ['0009_inquiry_branches']),
+      ...(legacy
+        ? []
+        : ['0009_inquiry_branches', '0015_inquiry_customer_type']),
     ],
   )
 }
@@ -600,6 +832,7 @@ test('private inquiry writes require a staff session, CSRF and correct origin an
       { firstDate: '2026-02-29' },
       { product: 'bad' },
       { branch: 'unknown-branch' },
+      { customerType: 'unknown-type' },
       { source: 'search', adId: 'test-ad' },
       { note: 'a'.repeat(1501) },
       { source: 'instagram_ad', adId: 'unregistered' },
@@ -649,10 +882,13 @@ test('branch migration preserves an existing inquiry, legacy creates can retry a
         legacyFingerprint,
       )
       .run()
-    const migrationSql = await readFile(
-      'worker/migrations/0009_inquiry_branches.sql',
-      'utf8',
-    )
+    const migrationSql = (
+      await Promise.all(
+        ['0009_inquiry_branches', '0015_inquiry_customer_type'].map((name) =>
+          readFile('worker/migrations/' + name + '.sql', 'utf8'),
+        ),
+      )
+    ).join('\n')
     await f.db.batch(
       migrationSql
         .split(';')
@@ -676,6 +912,7 @@ test('branch migration preserves an existing inquiry, legacy creates can retry a
       ...originalFields,
       version: 1,
       branch: null,
+      customerType: null,
     })
     assert.equal((await create({ id, ...originalFields })).status, 200)
     assert.equal(
@@ -714,6 +951,56 @@ test('branch migration preserves an existing inquiry, legacy creates can retry a
   } finally {
     await f.mf.dispose()
   }
+})
+
+test('customer type can change without erasing hidden follow-up notes or breaking older clients', async (t) => {
+  const f = await inquiriesFixture()
+  t.after(() => f.mf.dispose())
+  const { cookie, csrfToken } = await f.activate()
+  const options = { cookie, headers: { 'X-CSRF-Token': csrfToken } }
+  const record = {
+    ...newInquiry(),
+    branch: 'hanam',
+    nextAction: 'previously saved step',
+  }
+  const path = inquiries + '/' + record.id
+  const create = (body) => f.send(inquiries, { ...options, body })
+  const update = (body) => f.send(path, { ...options, method: 'PUT', body })
+  assert.equal((await create(record)).status, 200)
+  const { nextAction, ...visible } = record
+  const changed = await (
+    await update({ ...visible, customerType: 'junior', version: 1 })
+  ).json()
+  assert.equal(changed.item.customerType, 'junior')
+  assert.equal(changed.item.nextAction, nextAction)
+  const replay = await (await create(record)).json()
+  assert.deepEqual(replay.item, changed.item)
+  const oldEdit = await (await update({ ...record, version: 2 })).json()
+  assert.equal(oldEdit.item.customerType, 'junior')
+  const adult = await (
+    await update({ ...visible, customerType: 'adult', version: 3 })
+  ).json()
+  assert.equal(adult.item.customerType, 'adult')
+  assert.equal(adult.item.nextAction, nextAction)
+  const clear = await (
+    await update({ ...visible, customerType: null, version: 4 })
+  ).json()
+  assert.equal(clear.item.customerType, null)
+  assert.equal(clear.item.nextAction, nextAction)
+  assert.equal(
+    JSON.stringify(
+      await f.db
+        .prepare('SELECT * FROM inquiries WHERE id=?')
+        .bind(record.id)
+        .first(),
+    ).includes(nextAction),
+    false,
+  )
+  const fresh = { ...visible, id: randomUUID(), customerType: 'adult' }
+  const freshItem = (await (await create(fresh)).json()).item
+  assert.equal(freshItem.customerType, 'adult')
+  assert.equal(freshItem.nextAction, '')
+  assert.equal((await create({ ...fresh, customerType: 'junior' })).status, 409)
 })
 
 test('only an authorized versioned delete removes an inquiry; repeated delete and delayed create cannot restore it', async () => {
@@ -813,7 +1100,11 @@ test('inquiry fields are encrypted, POST retries preserve subsequent edits, and 
       f.send(inquiries, { cookie, headers, body })
     const pair = await Promise.all([create(), create()])
     for (const res of pair)
-      assert.deepEqual((await res.json()).item, { ...input, version: 1 })
+      assert.deepEqual((await res.json()).item, {
+        ...input,
+        version: 1,
+        customerType: null,
+      })
     const stored = await f.db
       .prepare('SELECT * FROM inquiries WHERE id=?')
       .bind(input.id)
@@ -866,6 +1157,7 @@ test('inquiry fields are encrypted, POST retries preserve subsequent edits, and 
       version: 1,
       product: 'lesson',
       channel: 'phone',
+      customerType: null,
     })
     assert.deepEqual(items[1], updated)
     assert.equal(

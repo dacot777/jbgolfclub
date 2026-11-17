@@ -1,13 +1,17 @@
 import {
   CALENDAR_LIMITS,
+  calendarOrganizationForAccount,
   isCalendarAccount,
+  type CalendarBranch,
+  type CalendarBrand,
   type CalendarSchedule,
   type CalendarScheduleInput,
 } from '../src/lib/calendar-types'
+import { parseCalendarPermalink } from '../src/lib/calendar-permalink'
 import type { Env } from './types'
 
 const columns =
-  'id,version,account,kind,day AS date,local_time AS time,title,note'
+  'id,version,account,brand,branch,kind,day AS date,local_time AS time,title,note,permalink'
 const monthFormat = /^\d{4}-(0[1-9]|1[0-2])$/
 const dayFormat = /^\d{4}-\d{2}-\d{2}$/
 const timeFormat = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -40,10 +44,37 @@ function versionFrom(value: unknown) {
   return value
 }
 
-function inputFrom(raw: Record<string, unknown>): CalendarScheduleInput {
-  const { account, kind, date, time, title, note } = raw
+function todayInSeoul() {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10)
+}
+
+function organizationFrom(raw: Record<string, unknown>) {
+  const { account, brand, branch } = raw
+  if (isCalendarAccount(account)) {
+    const owner = calendarOrganizationForAccount(account)
+    if (
+      (brand !== undefined && brand !== owner.brand) ||
+      (branch !== undefined && branch !== owner.branch)
+    )
+      throw new CalendarError('invalid_calendar_brand', 400)
+    return { account, ...owner }
+  }
+  if (account == null) {
+    if (brand === 'club' && (branch === 'cheongdam' || branch === 'seohyeon'))
+      return { account: null, brand, branch } as const
+    if ((brand === 'academy' || brand === 'haus') && branch == null)
+      return { account: null, brand, branch: null } as const
+  }
+  throw new CalendarError('invalid_calendar_brand', 400)
+}
+
+function inputFrom(raw: Record<string, unknown>): CalendarScheduleInput & {
+  brand: CalendarBrand
+  branch: CalendarBranch | null
+} {
+  const { account, brand, branch } = organizationFrom(raw)
+  const { kind, date, time, title, note } = raw
   if (
-    !isCalendarAccount(account) ||
     (kind !== 'post' && kind !== 'reel') ||
     typeof date !== 'string' ||
     !dayFormat.test(date) ||
@@ -63,7 +94,24 @@ function inputFrom(raw: Record<string, unknown>): CalendarScheduleInput {
     day.toISOString().slice(0, 10) !== date
   )
     throw new CalendarError('invalid_calendar_date', 400)
-  return { account, kind, date, time, title: title.trim(), note }
+  const input = {
+    account,
+    kind,
+    date,
+    time,
+    title: title.trim(),
+    note,
+    brand,
+    branch,
+  } satisfies CalendarScheduleInput
+  // Keep the original creation fingerprint for pre-link requests and their retries.
+  if (raw.permalink == null || raw.permalink === '') return input
+  const link = account && parseCalendarPermalink(raw.permalink, account)
+  if (!link || link.kind !== kind)
+    throw new CalendarError('invalid_calendar_permalink', 400)
+  if (date > todayInSeoul())
+    throw new CalendarError('future_calendar_publication', 400)
+  return { ...input, permalink: link.permalink }
 }
 
 function parameters(input: CalendarScheduleInput) {
@@ -78,11 +126,16 @@ function parameters(input: CalendarScheduleInput) {
 }
 
 export async function listSchedules(env: Env, month: string) {
-  // Plans store Korean civil dates, including all-day plans; UTC midnight would shift date filters.
+  // An API timestamp supersedes the date supplied with a staff link, even across months.
+  // Keep its editable ID and private note alongside the corresponding official media.
   const rows = await env.DB.prepare(
-    'SELECT ' +
-      columns +
-      ' FROM calendar_schedules WHERE day BETWEEN ? AND ? ORDER BY day,local_time,id',
+    `SELECT s.id, s.version, s.account, s.brand, s.branch, s.kind, COALESCE(m.date, s.day) AS date,
+       COALESCE(m.time, s.local_time) AS time, s.title, s.note, s.permalink
+     FROM calendar_schedules s LEFT JOIN calendar_instagram_media m ON m.id = (
+       SELECT id FROM calendar_instagram_media WHERE s.permalink IS NOT NULL AND account=s.account
+         AND replace(replace(replace(permalink, '/reel/', '/p/'), '/reels/', '/p/'), '/tv/', '/p/')=replace(s.permalink, '/reel/', '/p/')
+       ORDER BY id LIMIT 1
+     ) WHERE s.day IS NOT NULL AND COALESCE(m.date, s.day) BETWEEN ? AND ? ORDER BY date,time,s.id`,
   )
     .bind(month + '-01', month + '-31')
     .all<CalendarSchedule>()
@@ -96,15 +149,26 @@ export async function createSchedule(
 ) {
   const id = idFrom(raw.id)
   const input = inputFrom(raw)
+  const { brand, branch, ...legacy } = input
   const fingerprint = await fingerprintFor(
-    'calendar-create:' + id + ':' + JSON.stringify(input),
+    'calendar-create:' +
+      id +
+      ':' +
+      JSON.stringify(raw.brand === undefined ? legacy : input),
   )
   const created = await env.DB.prepare(
-    'INSERT INTO calendar_schedules(id,account,kind,day,local_time,title,note,creation_fingerprint) ' +
-      'VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING ' +
+    'INSERT INTO calendar_schedules(id,account,kind,day,local_time,title,note,creation_fingerprint,permalink,scheduled_brand,scheduled_branch) ' +
+      'VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING ' +
       columns,
   )
-    .bind(id, ...parameters(input), fingerprint)
+    .bind(
+      id,
+      ...parameters(input),
+      fingerprint,
+      input.permalink ?? null,
+      input.account ? null : brand,
+      input.account ? null : branch,
+    )
     .first<CalendarSchedule>()
   if (created) return created
   // A retry after a later edit returns the latest record. Deletion clears the fingerprint.
@@ -116,7 +180,22 @@ export async function createSchedule(
     .bind(id, fingerprint)
     .first<CalendarSchedule>()
   if (replay) return replay
+  await checkDuplicateLink(env, id, input)
   throw new CalendarError('calendar_conflict', 409)
+}
+
+async function checkDuplicateLink(
+  env: Env,
+  id: string,
+  input: CalendarScheduleInput,
+) {
+  if (!input.permalink) return
+  const duplicate = await env.DB.prepare(
+    "SELECT 1 FROM calendar_schedules WHERE id<>? AND account=? AND permalink IS NOT NULL AND replace(permalink,'/reel/','/p/')=?",
+  )
+    .bind(id, input.account, input.permalink.replace('/reel/', '/p/'))
+    .first()
+  if (duplicate) throw new CalendarError('calendar_duplicate_permalink', 409)
 }
 
 async function exists(env: Env, id: string) {
@@ -135,15 +214,32 @@ export async function updateSchedule(
   const id = idFrom(idValue)
   const version = versionFrom(raw.version)
   const input = inputFrom(raw)
+  const setLink = raw.permalink !== undefined
   const updated = await env.DB.prepare(
-    'UPDATE calendar_schedules SET account=?,kind=?,day=?,local_time=?,title=?,note=?,version=version+1 ' +
-      'WHERE id=? AND version=? AND day IS NOT NULL RETURNING ' +
+    'UPDATE OR IGNORE calendar_schedules SET account=?,kind=?,day=?,local_time=?,title=?,note=?,' +
+      'scheduled_brand=?,scheduled_branch=?,permalink=CASE WHEN ? THEN ? ELSE permalink END, version=version+1 ' +
+      'WHERE id=? AND version=? AND day IS NOT NULL AND (? OR permalink IS NULL OR (account=? AND kind=? AND ?)) RETURNING ' +
       columns,
   )
-    .bind(...parameters(input), id, version)
+    .bind(
+      ...parameters(input),
+      input.account ? null : input.brand,
+      input.account ? null : input.branch,
+      +setLink,
+      input.permalink ?? null,
+      id,
+      version,
+      +setLink,
+      input.account,
+      input.kind,
+      Number(input.date <= todayInSeoul()),
+    )
     .first<CalendarSchedule>()
   if (updated) return updated
-  if (await exists(env, id)) throw new CalendarError('calendar_conflict', 409)
+  if (await exists(env, id)) {
+    await checkDuplicateLink(env, id, input)
+    throw new CalendarError('calendar_conflict', 409)
+  }
   throw new CalendarError('calendar_not_found', 404)
 }
 
@@ -156,8 +252,8 @@ export async function deleteSchedule(
   const version = versionFrom(raw.version)
   // Retain just a retired ID and version so a late creation replay cannot restore deleted details.
   const result = await env.DB.prepare(
-    'UPDATE calendar_schedules SET account=NULL,kind=NULL,day=NULL,local_time=NULL,title=NULL,note=NULL,' +
-      'creation_fingerprint=NULL,version=version+1 WHERE id=? AND version=? AND day IS NOT NULL',
+    'UPDATE calendar_schedules SET account=NULL,scheduled_brand=NULL,scheduled_branch=NULL,kind=NULL,day=NULL,local_time=NULL,title=NULL,note=NULL,' +
+      'creation_fingerprint=NULL,permalink=NULL,version=version+1 WHERE id=? AND version=? AND day IS NOT NULL',
   )
     .bind(id, version)
     .run()

@@ -5,6 +5,7 @@ import '@fontsource-variable/noto-sans-kr'
 import './index.css'
 import './connection.css'
 import App from './App'
+import { activateStaffDevice } from './lib/staff-device'
 import { ConnectionLegalPage } from './components/connection-legal-page'
 import './apple-workspace.css'
 
@@ -22,24 +23,6 @@ function readRoute() {
 }
 const initialRoute = readRoute()
 
-async function activateDevice(token: string) {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return false
-  const res = await fetch('/api/staff/activate', {
-    method: 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-    signal: AbortSignal.timeout(12000),
-  })
-  if (res.ok) return (await res.json()).authenticated === true
-  const session = await fetch('/api/staff/session', {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(10000),
-  })
-  return session.ok && (await session.json()).authenticated === true
-}
-
 function StaffActivation({
   token,
   finish,
@@ -47,11 +30,11 @@ function StaffActivation({
   token: string
   finish: () => void
 }) {
-  const request = React.useRef<Promise<boolean> | null>(null)
+  const request = React.useRef<Promise<string> | null>(null)
   const [failed, setFailed] = React.useState(false)
   React.useEffect(() => {
     let active = true
-    request.current ??= activateDevice(token).catch(() => false)
+    request.current ??= activateStaffDevice(token).catch(() => '')
     void request.current.then((ok) => {
       if (!active) return
       if (ok) finish()
@@ -88,10 +71,15 @@ function Workspace() {
     __INSTAGRAM_BACKEND__ &&
     (hash === '#calendar' || hash.startsWith('#calendar-view/'))
   React.useEffect(() => {
-    document.title = calendar
-      ? '콘텐츠 캘린더 · JB GOLF'
-      : 'JB GOLF ACADEMY · 광고 성과'
-  }, [calendar])
+    document.title =
+      hash === '#instagram-posts' && __INSTAGRAM_BACKEND__
+        ? '인스타 게시물 모아보기 · JB GOLF'
+        : hash === '#inquiries' && __INSTAGRAM_BACKEND__
+          ? '문의·상담 현황 · JB GOLF'
+          : calendar
+            ? '콘텐츠 캘린더 · JB GOLF'
+            : 'JB GOLF ACADEMY · 광고 성과'
+  }, [calendar, hash])
   React.useEffect(() => {
     const changed = () => setHash(readRoute())
     window.addEventListener('hashchange', changed)

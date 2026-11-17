@@ -33,14 +33,28 @@ export async function readOnlyCalendarMonth(
   return {
     month: data.month,
     schedules: data.schedules.map(
-      ({ id, version, account, kind, date, time, title }) => ({
+      ({
         id,
         version,
         account,
+        brand,
+        branch,
         kind,
         date,
         time,
         title,
+        permalink,
+      }) => ({
+        id,
+        version,
+        account,
+        brand,
+        branch,
+        kind,
+        date,
+        time,
+        title,
+        permalink,
         note: '',
       }),
     ),

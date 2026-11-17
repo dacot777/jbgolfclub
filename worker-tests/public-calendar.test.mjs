@@ -26,7 +26,12 @@ test('visitors read published media and plans without revealing editing data or 
   })
   t.after(() => mf.dispose())
   const db = await mf.getD1Database('DB')
-  for (const name of ['0010_calendar_schedules', '0011_calendar_instagram']) {
+  for (const name of [
+    '0010_calendar_schedules',
+    '0011_calendar_instagram',
+    '0014_calendar_links',
+    '0016_calendar_brands',
+  ]) {
     const sql = await readFile('worker/migrations/' + name + '.sql', 'utf8')
     await db.batch(
       sql
@@ -93,10 +98,13 @@ test('visitors read published media and plans without revealing editing data or 
   assert.deepEqual(month.schedules, [
     {
       account: publicAccount,
+      brand: 'academy',
+      branch: null,
       date: '2028-02-28',
       id: scheduleId,
       kind: 'post',
       note: '',
+      permalink: null,
       time: null,
       title: 'Tournament',
       version: 1,
@@ -118,6 +126,34 @@ test('visitors read published media and plans without revealing editing data or 
   const nextMonth = await (await request('/api/calendar?month=2028-03')).json()
   assert.deepEqual(nextMonth.posts, [])
   assert.deepEqual(nextMonth.schedules, [])
+  // Staff assigned this short code to March. The timestamp from Instagram places it in February.
+  await db
+    .prepare(
+      "UPDATE calendar_schedules SET day='2028-03-02', permalink='https://www.instagram.com/p/test/' WHERE id=?",
+    )
+    .bind(scheduleId)
+    .run()
+  const matched = await (await request('/api/calendar?month=2028-02')).json()
+  assert.deepEqual(
+    matched.schedules.map(({ date, time, permalink, note }) => ({
+      date,
+      time,
+      permalink,
+      note,
+    })),
+    [
+      {
+        date: '2028-02-29',
+        time: '08:15',
+        permalink: 'https://www.instagram.com/p/test/',
+        note: '',
+      },
+    ],
+  )
+  assert.deepEqual(
+    (await (await request('/api/calendar?month=2028-03')).json()).schedules,
+    [],
+  )
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
     for (const path of ['/api/calendar?month=2028-02', reel.thumbnailUrl])
       assert.equal((await request(path, method)).status, 405)

@@ -32,6 +32,31 @@
   opacity: 0.52;
   cursor: default;
 }
+.cc-reviewed-posts {
+  margin: 0 0 16px;
+  color: var(--cc-secondary);
+}
+.cc-reviewed-posts ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.cc-reviewed-posts a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+  color: var(--cc-blue);
+}
+.cc-reviewed-posts img {
+  border-radius: 5px;
+  object-fit: cover;
+}
 .cc :is(a, button):focus-visible,
 .cc-dialog :is(a, button, input, select, textarea):focus-visible,
 .cc-kind input:focus-visible + span {
@@ -50,8 +75,14 @@
 }
 .cc-header {
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 4px 0 28px;
   border-bottom: 1px solid var(--cc-border);
+}
+.cc-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .cc-header h1 {
   margin: 0;
@@ -159,6 +190,41 @@
   background: var(--cc-ink);
   color: white;
   border-color: var(--cc-ink);
+}
+.cc-account-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 4px 20px;
+  margin: 14px 0 0;
+  padding: 12px 16px 2px;
+  border-radius: 12px;
+  background: var(--cc-paper);
+}
+.cc-link-account {
+  display: block;
+  color: var(--cc-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.cc-link-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+.cc-link-options a {
+  display: inline-flex;
+  min-height: 44px;
+  min-width: 44px;
+  align-items: center;
+  gap: 2px;
+  color: var(--cc-blue);
+  text-decoration: none;
+  font-size: 13px;
+}
+.cc-link-options a:hover,
+.cc-link-options a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .cc-loading,
 .cc-sync-note,
@@ -688,6 +754,24 @@
   }
 }
 @container calendar (max-width:540px) {
+  .cc-account-links {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 4px 12px;
+  }
+  .cc-account-links > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 6px;
+    flex-wrap: wrap;
+  }
+  .cc-account-links > div + div {
+    border-top: 1px solid var(--cc-border);
+  }
+  .cc-link-options {
+    column-gap: 8px;
+  }
   .cc-preview {
     display: grid;
     gap: 1px;
@@ -823,5 +907,104 @@
   }
   .cc-switch-month button {
     min-width: 29px;
+  }
+}
+
+/* Brand and location colours accompany a text label in the filters, form and day cells. */
+[data-color='club'],
+[data-color='unspecified'] {
+  --brand-ink: #4a505c;
+  --brand-bg: #eceef2;
+}
+[data-color='academy'] {
+  --brand-ink: #196244;
+  --brand-bg: #e4f3e8;
+}
+[data-color='cheongdam'] {
+  --brand-ink: #234f94;
+  --brand-bg: #e6effd;
+}
+[data-color='seohyeon'] {
+  --brand-ink: #913e12;
+  --brand-bg: #fff0df;
+}
+[data-color='haus'] {
+  --brand-ink: #673991;
+  --brand-bg: #f1e9fa;
+}
+.cc-brand-mark {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--brand-ink);
+  background: var(--brand-bg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.cc-branch-filter {
+  margin-top: 8px;
+}
+.cc .cc-filter button[data-color]::before,
+.cc-brand-choices label span::before {
+  display: inline-block;
+  content: '';
+  height: 8px;
+  width: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brand-ink);
+}
+.cc .cc-filter button[data-color][aria-pressed='true'],
+.cc-dialog .cc-brand-choices input:checked + span {
+  color: var(--brand-ink);
+  background: var(--brand-bg);
+  border-color: var(--brand-ink);
+}
+.cc-dialog .cc-brand-choices {
+  flex-wrap: wrap;
+}
+.cc-dialog .cc-brand-choices label {
+  flex: 1 1 auto;
+}
+.cc-brand-choices label span {
+  padding-inline: 8px;
+  gap: 5px;
+  word-break: keep-all;
+  text-align: center;
+}
+.cc-agenda.cc-schedule-agenda {
+  grid-template-columns: 1fr;
+}
+@container calendar (max-width:730px) {
+  .cc-compact-caption {
+    display: block;
+    min-width: 0;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .cc .cc-published,
+  .cc .cc-planned {
+    display: grid;
+    gap: 1px;
+  }
+  .cc .cc-planned .cc-thumb {
+    display: none;
+  }
+  .cc .cc-planned .cc-preview-copy {
+    display: block;
+    grid-row: 1;
+  }
+  .cc .cc-planned .cc-preview-copy strong {
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cc-brand-mark {
+    padding-inline: 3px;
   }
 }

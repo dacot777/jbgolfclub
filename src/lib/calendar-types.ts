@@ -6,6 +6,28 @@ export const CALENDAR_ACCOUNTS = [
 
 export type CalendarAccount = (typeof CALENDAR_ACCOUNTS)[number]
 export type CalendarKind = 'post' | 'reel'
+export const CALENDAR_BRANDS = {
+  club: 'JB골프클럽',
+  academy: 'JB아카데미',
+  haus: '하우스 오브 제이비(Haus of JB)',
+} as const
+export const CALENDAR_BRANCHES = {
+  cheongdam: '청담',
+  seohyeon: '서현',
+} as const
+export type CalendarBrand = keyof typeof CALENDAR_BRANDS
+export type CalendarBranch = keyof typeof CALENDAR_BRANCHES
+
+export function calendarOrganizationForAccount(account: CalendarAccount): {
+  brand: CalendarBrand
+  branch: CalendarBranch | null
+} {
+  if (account === 'jbgolfacademy') return { brand: 'academy', branch: null }
+  return {
+    brand: 'club',
+    branch: account === 'jbgolfclub_bundang' ? 'seohyeon' : null,
+  }
+}
 export const CALENDAR_LIMITS = { title: 160, note: 2000 } as const
 
 export function isCalendarAccount(value: unknown): value is CalendarAccount {
@@ -13,12 +35,15 @@ export function isCalendarAccount(value: unknown): value is CalendarAccount {
 }
 
 export interface CalendarScheduleInput {
-  account: CalendarAccount
+  account: CalendarAccount | null
+  brand?: CalendarBrand
+  branch?: CalendarBranch | null
   kind: CalendarKind
   date: string
   time: string | null
   title: string
   note: string
+  permalink?: string | null
 }
 export interface CalendarSchedule extends CalendarScheduleInput {
   id: string

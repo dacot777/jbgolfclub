@@ -4,7 +4,7 @@ The supplied [Apple reference](../DESIGN.md) guides the site. A compact black na
 
 ## Content calendar
 
-The calendar leads with the month, dates and account filter. Actual Instagram photos and reel covers appear in day cells. Each date opens its full list. Managers can add, edit and delete manual schedules; the representative's private view-only link shows schedule titles and dates. Keyboards and touch devices can navigate the calendar and the daily list. Account setup, history still being read, unavailable feeds, and genuinely empty dates have distinct states.
+The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Staff select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and customer inquiries require a registered staff browser.
 
 ## States and data
 

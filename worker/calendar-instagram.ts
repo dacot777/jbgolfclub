@@ -77,7 +77,7 @@ export async function calendarInstagramCallback(request: Request, env: Env) {
           env.APP_ORIGIN +
           '/?calendar_instagram=' +
           encodeURIComponent(result) +
-          '#calendar',
+          '#instagram-posts',
         'Cache-Control': 'no-store',
         'Set-Cookie': stateCookie('', 0),
       },

@@ -74,6 +74,7 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
       return route.fulfill({ json: { items: [...records.values()].reverse() } })
     expect(request.headers()['x-csrf-token']).toBe(sessionToken)
     const payload = request.postDataJSON()
+    expect(payload).not.toHaveProperty('nextAction')
     if (request.method() === 'POST') {
       const { id, ...input } = payload
       expect(id).toMatch(/^[\da-f-]{36}$/i)
@@ -97,7 +98,12 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
     expect(request.method()).toBe('PUT')
     expect(old).toBeDefined()
     expect(payload.version).toBe(old!.version)
-    const item = { ...payload, id, version: old!.version + 1 } as Inquiry
+    const item = {
+      ...old,
+      ...payload,
+      id,
+      version: old!.version + 1,
+    } as Inquiry
     records.set(id, item)
     return route.fulfill({ json: { item } })
   })
@@ -106,6 +112,10 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
     deletionRequests,
     reads: () => reads,
     analyticsEvents: () => analyticsEvents,
+    grantUses: () => grantUses,
+    setSignedIn: (value: boolean) => {
+      signedIn = value
+    },
   }
 }
 
@@ -127,7 +137,7 @@ test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 
     page.getByRole('heading', { name: /문의·상담 현황/ }),
   ).toBeVisible()
   await expect(
-    page.getByText(/담당자 기기/, { exact: false }).first(),
+    page.getByRole('button', { name: '연결 파일 선택' }),
   ).toBeVisible()
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(
@@ -147,10 +157,71 @@ test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 
   const summary = page.getByLabel('전체 문의 현황')
   await expectTotal(summary, 0)
   await page.getByRole('button', { name: '이 기기 연결 해제' }).click()
-  await expect(page.getByText(/담당자 기기 연결 링크/)).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '연결 파일 선택' }),
+  ).toBeVisible()
   await expect(summary).toHaveCount(0)
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   expect(api.analyticsEvents()).toBe(0)
+})
+
+test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 같은 탭에서 문의를 연다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, false)
+  await page.goto('/#inquiries')
+  const makeLauncher = (href: string) => ({
+    name: '운영-기기-연결.html',
+    mimeType: 'text/html',
+    buffer: Buffer.from('<a href="' + href + '">연결</a>'),
+  })
+  const hosted = 'https://jbgolf-connection.jbgolfacademy.workers.dev'
+  const file = page.getByLabel('담당자 연결 파일')
+  let attempts = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/staff/activate') attempts++
+  })
+  await file.setInputFiles(
+    makeLauncher(hosted + '.example/#staff-device/' + deviceGrant),
+  )
+  await expect(page.getByRole('alert')).toContainText('파일 이름')
+  expect(attempts).toBe(0)
+  await file.setInputFiles(
+    makeLauncher(hosted + '/#staff-device/' + 'X'.repeat(43)),
+  )
+  await expect(page.getByRole('alert')).toContainText('사용 기한')
+  expect(api.reads()).toBe(0)
+  await file.setInputFiles(
+    makeLauncher(hosted + '/#staff-device/' + deviceGrant),
+  )
+  await expect(page.getByRole('heading', { name: '문의 목록' })).toBeVisible()
+  await expect(page).toHaveURL(/#inquiries$/)
+  expect(api.grantUses()).toBe(1)
+  expect(
+    await page.evaluate(() => document.documentElement.innerText),
+  ).not.toContain(deviceGrant)
+})
+
+test('다른 탭에서 담당자 연결을 마치거나 해제한 뒤 기존 문의 화면에서 확인된다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, false)
+  await page.goto('/#inquiries')
+  const recheck = page.getByRole('button', { name: '연결 상태 다시 확인' })
+  await expect(recheck).toBeVisible()
+  api.setSignedIn(true)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  const list = page.getByRole('heading', { name: '문의 목록' })
+  await expect(list).toBeVisible()
+  api.setSignedIn(false)
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event('visibilitychange')),
+  )
+  await expect(list).toHaveCount(0)
+  await expect(recheck).toBeVisible()
+  api.setSignedIn(true)
+  await recheck.click()
+  await expect(list).toBeVisible()
 })
 
 test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필터를 새로고침 후에도 확인한다', async ({
@@ -168,10 +239,10 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     adId: demoAd.id,
     stage: 'received',
     assignee: 'kim_yeoul',
+    customerType: 'junior',
     name: '검증 캠프 A',
     contact: '',
     note: '캠프 신청 일정 확인',
-    nextAction: '가상 안내자료 준비',
   }
   const lesson: InquiryInput = {
     firstDate: '2026-11-11',
@@ -182,13 +253,23 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     adId: null,
     stage: 'consulting',
     assignee: 'unassigned',
+    customerType: 'adult',
     name: '검증 레슨 B',
     contact: '',
     note: '레슨 시간 확인',
-    nextAction: '모의 일정 검토',
   }
   for (const input of [camp, lesson]) {
     await page.getByRole('button', { name: '새 문의', exact: true }).click()
+    await expect(page.locator('.iq-choices legend')).toHaveText([
+      '인계 담당자',
+      '문의 대상',
+      '지점',
+    ])
+    const customer = page.getByRole('group', { name: '문의 대상' })
+    await expect(customer.getByRole('radio', { name: '미지정' })).toBeChecked()
+    const customerLabel = input.customerType === 'junior' ? '주니어' : '일반인'
+    await customer.getByRole('radio', { name: customerLabel }).check()
+    await expect(page.getByLabel('다음 할 일', { exact: true })).toHaveCount(0)
     const branch = page.getByRole('group', { name: '지점', exact: true })
     await expect(branch.getByRole('radio', { name: '미지정' })).toBeChecked()
     for (const label of ['하남', '청담', '서현'])
@@ -224,7 +305,6 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     await page
       .getByRole('textbox', { name: '상담 메모', exact: true })
       .fill(input.note)
-    await page.getByLabel('다음 할 일', { exact: true }).fill(input.nextAction)
     await page
       .getByRole('radio', {
         name: input.assignee === 'kim_yeoul' ? '김여울 대리님' : '미배정',
@@ -240,6 +320,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     await expect(
       page.getByRole('button', { name: input.name + ' 수정', exact: true }),
     ).toBeVisible()
+    await expect(
+      page.getByRole('row', { name: new RegExp(input.name) }),
+    ).toContainText(customerLabel)
   }
   const saved = [...api.records.values()]
   expect(saved).toHaveLength(2)
@@ -253,6 +336,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('radio', { name: '김여울 대리님', exact: true }),
   ).toBeChecked()
   await page.getByRole('radio', { name: '김의현 원장님', exact: true }).check()
+  await expect(
+    page.getByRole('radio', { name: '주니어', exact: true }),
+  ).toBeChecked()
   const branch = page.getByRole('group', { name: '지점', exact: true })
   await expect(branch.getByRole('radio', { name: '하남' })).toBeChecked()
   await branch.getByRole('radio', { name: '청담' }).check()
@@ -363,7 +449,11 @@ test('새 문의는 바깥 클릭으로 저장 없이 닫히고 다시 열면 �
 
   await opener.click()
   await expect(alias).toBeEmpty()
-  await expect(editor.getByRole('radio', { name: '미지정' })).toBeChecked()
+  await expect(
+    editor
+      .getByRole('group', { name: '지점' })
+      .getByRole('radio', { name: '미지정' }),
+  ).toBeChecked()
   await page.keyboard.press('Escape')
   await expect(editor).toHaveCount(0)
   await opener.click()
@@ -389,7 +479,7 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
     name: '삭제 대상 검증',
     contact: '',
     note: '',
-    nextAction: '',
+    nextAction: '기존 보존 기록',
   }
   const remaining: Inquiry = {
     ...legacy,
@@ -410,18 +500,31 @@ test('기존 문의의 지점을 지정·해제하고 확인한 문의만 삭제
     .getByRole('button', { name: legacy.name + ' 수정', exact: true })
     .click()
   const branch = page.getByRole('group', { name: '지점', exact: true })
+  const customer = page.getByRole('group', { name: '문의 대상', exact: true })
+  await expect(
+    page.getByText('이전에 기록한 다음 할 일', { exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText('기존 보존 기록', { exact: true })).toBeVisible()
+  await expect(customer.getByRole('radio', { name: '미지정' })).toBeChecked()
+  await expect(page.getByLabel('다음 할 일', { exact: true })).toHaveCount(0)
+  await customer.getByRole('radio', { name: '주니어' }).check()
   await expect(branch.getByRole('radio', { name: '미지정' })).toBeChecked()
   await branch.getByRole('radio', { name: '서현' }).check()
   await page.getByRole('button', { name: '저장', exact: true }).click()
   await expect(targetRow).toContainText('서현')
+  await expect(targetRow).toContainText('주니어')
   await targetRow
     .getByRole('button', { name: legacy.name + ' 수정', exact: true })
     .click()
   await expect(branch.getByRole('radio', { name: '서현' })).toBeChecked()
+  await expect(customer.getByRole('radio', { name: '주니어' })).toBeChecked()
+  await customer.getByRole('radio', { name: '미지정' }).check()
   await branch.getByRole('radio', { name: '미지정' }).check()
   await page.getByRole('button', { name: '저장', exact: true }).click()
   await expect(targetRow).toContainText('미지정')
   expect(api.records.get(legacy.id)?.branch).toBeNull()
+  expect(api.records.get(legacy.id)?.customerType).toBeNull()
+  expect(api.records.get(legacy.id)?.nextAction).toBe('기존 보존 기록')
   await targetRow
     .getByRole('button', { name: legacy.name + ' 수정', exact: true })
     .click()
