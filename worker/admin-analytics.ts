@@ -1,6 +1,29 @@
 import type { Env } from './types'
 import { readMetaAds } from './meta-ads'
 import {
+  CalendarError,
+  calendarMonth,
+  createSchedule,
+  deleteSchedule,
+  listSchedules,
+  updateSchedule,
+} from './calendar-schedules'
+import {
+  calendarInstagramThumbnail,
+  readCalendarMedia,
+  startCalendarInstagram,
+} from './calendar-instagram'
+import type { CalendarMonth } from '../src/lib/calendar-types'
+import {
+  calendarShareStatus,
+  rotateCalendarShare,
+  revokeCalendarShare,
+  validateCalendarShare,
+  thumbnailCookie,
+  THUMBNAIL_COOKIE,
+  SHARED_THUMBNAIL_PATH,
+} from './calendar-share'
+import {
   createInquiry,
   deleteInquiry,
   listInquiries,
@@ -500,6 +523,18 @@ export async function cleanupAnalytics(env: Env): Promise<void> {
   ])
 }
 
+async function loadCalendarMonth(
+  request: Request,
+  env: Env,
+): Promise<CalendarMonth> {
+  const month = calendarMonth(new URL(request.url).searchParams.get('month'))
+  const [schedules, media] = await Promise.all([
+    listSchedules(env, month),
+    readCalendarMedia(env, month),
+  ])
+  return { month, schedules, ...media }
+}
+
 /** Admin credentials and individual visitor history never enter public responses. */
 export async function adminAnalytics(
   request: Request,
@@ -530,6 +565,96 @@ export async function adminAnalytics(
         .bind(session.session_hash)
         .run()
       return json({ authenticated: false }, 200, cookie(ADMIN_COOKIE, '', 0))
+    }
+    if (path === '/api/admin/calendar' && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return json(await loadCalendarMonth(request, env))
+    }
+    if (path === '/api/admin/calendar/share' && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return json(await calendarShareStatus(env))
+    }
+    if (
+      path === '/api/admin/calendar/share' &&
+      (request.method === 'POST' || request.method === 'DELETE')
+    ) {
+      await requireAdminMutation(request, env)
+      return json(
+        request.method === 'POST'
+          ? await rotateCalendarShare(env)
+          : await revokeCalendarShare(env),
+      )
+    }
+    if (path === '/api/calendar/view' && request.method === 'GET') {
+      const token =
+        /^Bearer ([A-Za-z0-9_-]{43})$/.exec(
+          request.headers.get('Authorization') ?? '',
+        )?.[1] ?? ''
+      const expiresAt = await validateCalendarShare(env, token)
+      const data = await loadCalendarMonth(request, env)
+      return json(
+        {
+          month: data.month,
+          schedules: data.schedules.map((item) => ({ ...item, note: '' })),
+          accounts: data.accounts.map(({ account, status, lastSyncedAt }) => ({
+            account,
+            status,
+            lastSyncedAt,
+          })),
+          posts: data.posts.map((item) => ({
+            ...item,
+            thumbnailUrl: item.thumbnailUrl
+              ? SHARED_THUMBNAIL_PATH + item.id
+              : null,
+          })),
+        } satisfies CalendarMonth,
+        200,
+        thumbnailCookie(token, expiresAt),
+      )
+    }
+    const sharedThumbnail = /^\/api\/calendar\/view\/thumbnail\/(\d+)$/.exec(
+      path,
+    )
+    if (sharedThumbnail && request.method === 'GET') {
+      await validateCalendarShare(env, readCookie(request, THUMBNAIL_COOKIE))
+      return await calendarInstagramThumbnail(env, sharedThumbnail[1])
+    }
+    const profileConnect =
+      /^\/api\/admin\/calendar\/instagram\/connect\/([^/]+)$/.exec(path)
+    if (profileConnect && request.method === 'POST') {
+      const session = await requireAdminMutation(request, env)
+      return await startCalendarInstagram(
+        env,
+        profileConnect[1],
+        session.session_hash,
+      )
+    }
+    const thumbnail =
+      /^\/api\/admin\/calendar\/instagram\/thumbnail\/(\d+)$/.exec(path)
+    if (thumbnail && request.method === 'GET') {
+      await requireAdmin(request, env)
+      return await calendarInstagramThumbnail(env, thumbnail[1])
+    }
+    if (path === '/api/admin/calendar/schedules' && request.method === 'POST') {
+      await requireAdminMutation(request, env)
+      return json({
+        item: await createSchedule(env, await body(request, 16384), (value) =>
+          hmac(env, value),
+        ),
+      })
+    }
+    const schedule = /^\/api\/admin\/calendar\/schedules\/([^/]+)$/.exec(path)
+    if (schedule && (request.method === 'PUT' || request.method === 'DELETE')) {
+      await requireAdminMutation(request, env)
+      if (request.method === 'DELETE')
+        return json(await deleteSchedule(env, schedule[1], await body(request)))
+      return json({
+        item: await updateSchedule(
+          env,
+          schedule[1],
+          await body(request, 16384),
+        ),
+      })
     }
     if (path === '/api/admin/inquiries' && request.method === 'GET') {
       await requireAdmin(request, env)
@@ -569,12 +694,17 @@ export async function adminAnalytics(
     return json({ error: { code: 'not_found' } }, 404)
   } catch (error) {
     const knownError =
-      error instanceof AnalyticsError || error instanceof InquiryError
-    const fallback = new URL(request.url).pathname.startsWith(
-      '/api/admin/inquiries',
-    )
-      ? 'inquiries_unavailable'
-      : 'analytics_unavailable'
+      error instanceof AnalyticsError ||
+      error instanceof InquiryError ||
+      error instanceof CalendarError
+    const path = new URL(request.url).pathname
+    const fallback =
+      path.startsWith('/api/admin/calendar') ||
+      path.startsWith('/api/calendar/')
+        ? 'calendar_unavailable'
+        : path.startsWith('/api/admin/inquiries')
+          ? 'inquiries_unavailable'
+          : 'analytics_unavailable'
     const response = json(
       { error: { code: knownError ? error.code : fallback } },
       knownError ? error.status : 503,

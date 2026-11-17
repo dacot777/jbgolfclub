@@ -7,6 +7,11 @@ import { collectMetaAds, readPublicMetaAds } from './meta-ads'
 import { readMetaLifetime } from './meta-lifetime'
 import { getMetaAdThumbnail } from './meta-ad-assets'
 import {
+  CALENDAR_INSTAGRAM_CALLBACK,
+  calendarInstagramCallback,
+  syncCalendarInstagram,
+} from './calendar-instagram'
+import {
   authorizationUrl,
   configuration,
   exchangeCode,
@@ -244,6 +249,9 @@ async function deletion(request: Request, env: Env) {
     .bind(userId, userId, userId)
     .first<{ user_id: string }>()
   if (account) await clearConnection(env, account.user_id)
+  await env.DB.prepare(
+    'DELETE FROM calendar_instagram_accounts WHERE user_id=? OR oauth_user_id=? OR app_scoped_id=?',
+  ).bind(userId, userId, userId).run()
   const code = crypto.randomUUID()
   await env.DB.prepare(
     'INSERT INTO deletion_confirmations(code,created_at) VALUES (?,?)',
@@ -259,7 +267,7 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
-  if (path.startsWith('/api/admin/') || path === '/api/analytics/event')
+  if (path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
@@ -277,6 +285,8 @@ async function api(request: Request, env: Env) {
     return start(request, env)
   if (path === '/api/auth/instagram/callback' && request.method === 'GET')
     return callback(request, env)
+  if (path === CALENDAR_INSTAGRAM_CALLBACK && request.method === 'GET')
+    return calendarInstagramCallback(request, env)
   if (
     (path === '/api/data-deletion' ||
       path === '/api/auth/instagram/deauthorize') &&
@@ -397,6 +407,8 @@ export default {
   async scheduled(event: { cron: string }, env: Env) {
     if (event.cron === '15 * * * *') {
       await collectMetaAds(env)
+    } else if (event.cron === '45 * * * *') {
+      await syncCalendarInstagram(env)
     } else if (event.cron === '0 0 * * *') {
       await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
     }

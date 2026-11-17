@@ -1,28 +1,10 @@
-# JB Golf dashboard design
+# JB Golf workspace design
 
-## Direction
+The supplied [Apple reference](../DESIGN.md) guides the site. A compact black navigation bar, a white context strip and a centered content column accompany the original JB Academy shield. The surface is #f5f5f7, cards are white with 18px corners, body text is #1d1d1f, and controls use #0066cc with a #0071e3 focus outline. System fonts and locally hosted Korean type keep text readable without external font requests. Status colors keep their delivery or warning meaning.
 
-A quiet, refined golf editorial language applied to a work dashboard. The page leads with the weekly report, then spend/reach/impressions/clicks, comparable weekly trends, monthly totals and objective-specific details. The dark forest-green sidebar and report panel retain the existing published draft’s visual identity.
+## Content calendar
 
-UI/UX Pro Max searches returned a relevant **Data-Dense Dashboard** style and **Trend Over Time / Line Chart** guidance. Its generated enterprise sales landing pattern was off-topic even after a narrower retry; it was not adopted or saved as a verified product pattern. The following is a project-specific synthesis of the verified chart/accessibility guidance and existing JB Golf palette.
-
-## Semantic tokens
-
-| Role | Value |
-| --- | --- |
-| background | #f6f7f4 |
-| surface | #ffffff |
-| foreground | #27372d |
-| primary | #204f3d |
-| sidebar / report | #173e30 |
-| accent | #d2ed9e |
-| muted foreground | #66746b |
-| border | #e3e8df |
-| current chart line | #315f45 |
-| previous chart line | #7b8a7e, dashed |
-| monthly spend bar | #7f9965 |
-
-Typography uses locally served DM Sans Variable and Noto Sans KR Variable with tabular figures. Korean paragraphs retain natural wrapping. Font licenses are included. Component spacing follows a 4/8px rhythm; primary cards use 10–13px radii and restrained shadows.
+The calendar leads with the month, dates and account filter. Actual Instagram photos and reel covers appear in day cells. Each date opens its full list. Managers can add, edit and delete manual schedules; the representative's private view-only link shows schedule titles and dates. Keyboards and touch devices can navigate the calendar and the daily list. Account setup, history still being read, unavailable feeds, and genuinely empty dates have distinct states.
 
 ## States and data
 

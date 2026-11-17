@@ -89,6 +89,7 @@ async function fixture(overrides = {}, extraMigrations = []) {
   ) =>
     mf.dispatchFetch(origin + path, {
       method,
+      redirect: 'manual',
       headers: {
         ...(body === undefined
           ? {}
@@ -125,6 +126,311 @@ const event = (overrides = {}) => ({
 const cookieFrom = (response) =>
   response.headers.get('Set-Cookie')?.split(';')[0]
 const value = (db, sql) => db.prepare(sql).first()
+
+test('calendar viewer links authorize only the month and thumbnails, rotate, expire and revoke', async () => {
+  const f = await fixture({}, [
+    '0001_single_instagram',
+    '0010_calendar_schedules',
+    '0011_calendar_instagram',
+    '0012_calendar_share',
+  ])
+  try {
+    const ownerShare = '/api/admin/calendar/share'
+    const month = '/api/calendar/view?month=2028-02'
+    const schedule = '/api/admin/calendar/schedules'
+    const thumbnail = '/api/calendar/view/thumbnail/90001'
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    const admin = { cookie, headers, body: {} }
+    const bearer = (token) => ({
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    const createLink = async () => {
+      const response = await f.send(ownerShare, admin)
+      assert.equal(response.status, 200)
+      const link = await response.json()
+      assert.match(link.token, /^[A-Za-z0-9_-]{43}$/)
+      assert.ok(
+        Math.abs(Date.parse(link.expiresAt) - (Date.now() + 30 * 86400000)) <
+          60000,
+      )
+      return link
+    }
+    assert.deepEqual(await (await f.send(ownerShare, { cookie })).json(), {
+      expiresAt: null,
+    })
+    assert.equal((await f.send(ownerShare)).status, 401)
+    assert.equal((await f.send(ownerShare, { cookie, body: {} })).status, 403)
+    assert.equal(
+      (
+        await f.send(ownerShare, {
+          ...admin,
+          headers: { ...headers, Origin: 'https://other.test' },
+        })
+      ).status,
+      403,
+    )
+    assert.equal((await f.send(month, { cookie })).status, 401)
+    assert.equal((await f.send(thumbnail)).status, 401)
+    const first = await createLink()
+    const row = await f.db
+      .prepare('SELECT token_digest FROM calendar_read_grant WHERE id=1')
+      .first()
+    assert.notEqual(row.token_digest, first.token)
+    assert.deepEqual(await (await f.send(ownerShare, { cookie })).json(), {
+      expiresAt: first.expiresAt,
+    })
+    assert.equal((await f.send(month + '&token=' + first.token)).status, 401)
+    assert.equal(
+      (await f.send('/api/admin/inquiries', bearer(first.token))).status,
+      401,
+    )
+    assert.equal(
+      (await f.send(schedule, { ...bearer(first.token), body: {} })).status,
+      401,
+    )
+    const plan = {
+      id: randomUUID(),
+      account: 'jbgolfacademy',
+      kind: 'post',
+      title: '촬영 예정',
+      date: '2028-02-29',
+      time: null,
+      note: '담당자 작업 메모',
+    }
+    assert.equal((await f.send(schedule, { ...admin, body: plan })).status, 200)
+    // A synthetic cached CDN URL stands in for a signed Instagram thumbnail. No remote service is called.
+    await f.db
+      .prepare(
+        "INSERT INTO calendar_instagram_accounts(account,user_id,encrypted_token,token_expires_at,refreshed_at) VALUES('jbgolfacademy','101','fixture',0,0)",
+      )
+      .run()
+    await f.db
+      .prepare(
+        "INSERT INTO calendar_instagram_media(id,account,kind,title,date,time,permalink,thumbnail_url,thumbnail_checked_at,seen_at) VALUES('90001','jbgolfacademy','reel','Published','2028-02-01','19:00','https://www.instagram.com/reel/synthetic/','https://test.cdninstagram.com/synthetic.jpg',?,?)",
+      )
+      .bind(Date.now(), Date.now())
+      .run()
+    const response = await f.send(month, bearer(first.token))
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('Cache-Control'), /no-store/)
+    assert.match(
+      response.headers.get('Set-Cookie'),
+      /Path=\/api\/calendar\/view\/thumbnail\/; HttpOnly; Secure; SameSite=Strict/,
+    )
+    const view = await response.json()
+    assert.equal(view.schedules[0].title, plan.title)
+    assert.equal(view.schedules[0].note, '')
+    assert.ok(!JSON.stringify(view).includes(plan.note))
+    assert.ok(!JSON.stringify(view).includes(first.token))
+    assert.deepEqual(
+      view.accounts.map((row) => row.status),
+      Array(3).fill('setup_required'),
+    )
+    assert.deepEqual(Object.keys(view.accounts[0]).sort(), [
+      'account',
+      'lastSyncedAt',
+      'status',
+    ])
+    assert.equal(view.posts[0].thumbnailUrl, thumbnail)
+    const imageCookie = cookieFrom(response)
+    const image = await f.send(thumbnail, { cookie: imageCookie })
+    assert.equal(image.status, 302)
+    assert.match(image.headers.get('Location'), /synthetic\.jpg$/)
+    assert.equal(
+      (await f.send(ownerShare, { cookie: imageCookie })).status,
+      401,
+    )
+    const second = await createLink()
+    assert.notEqual(second.token, first.token)
+    assert.equal((await f.send(month, bearer(first.token))).status, 401)
+    assert.equal((await f.send(thumbnail, { cookie: imageCookie })).status, 401)
+    await f.db.prepare('UPDATE calendar_read_grant SET expires_at=0').run()
+    assert.equal((await f.send(month, bearer(second.token))).status, 401)
+    const third = await createLink()
+    assert.equal(
+      (await f.send(ownerShare, { cookie, body: {}, method: 'DELETE' })).status,
+      403,
+    )
+    assert.deepEqual(
+      await (await f.send(ownerShare, { ...admin, method: 'DELETE' })).json(),
+      { deleted: true },
+    )
+    assert.equal((await f.send(month, bearer(third.token))).status, 401)
+    assert.deepEqual(await (await f.send(ownerShare, { cookie })).json(), {
+      expiresAt: null,
+    })
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
+test('calendar protects executive plans and monthly reads, including all three account schedules', async () => {
+  const f = await fixture({}, [
+    '0001_single_instagram',
+    '0010_calendar_schedules',
+    '0011_calendar_instagram',
+  ])
+  try {
+    const month = '/api/admin/calendar?month=2028-02'
+    const schedules = '/api/admin/calendar/schedules'
+    assert.equal((await f.send(month)).status, 401)
+    assert.equal(
+      (await f.send('/api/admin/calendar/instagram/thumbnail/123')).status,
+      401,
+    )
+    const { cookie, csrfToken } = await f.signIn()
+    const headers = { 'X-CSRF-Token': csrfToken }
+    assert.equal(
+      (await f.send('/api/admin/calendar?month=2028-13', { cookie })).status,
+      400,
+    )
+    const empty = await (await f.send(month, { cookie })).json()
+    assert.deepEqual(empty.schedules, [])
+    assert.deepEqual(empty.posts, [])
+    assert.deepEqual(empty.accounts.map((row) => row.account).sort(), [
+      'jbgolfacademy',
+      'jbgolfclub_bundang',
+      'jbgolfclub_official',
+    ])
+
+    const plan = {
+      id: randomUUID(),
+      account: 'jbgolfacademy',
+      date: '2028-02-29',
+      time: null,
+      kind: 'post',
+      title: '테스트 촬영 일정',
+      note: '가상 일정',
+    }
+    const create = (body, options = {}) =>
+      f.send(schedules, { cookie, headers, body, ...options })
+    assert.equal((await create(plan, { cookie: undefined })).status, 401)
+    assert.equal((await create(plan, { headers: {} })).status, 403)
+    assert.equal(
+      (
+        await create(plan, {
+          headers: { ...headers, Origin: 'https://foreign.invalid' },
+        })
+      ).status,
+      403,
+    )
+    for (const invalid of [
+      { date: '2027-02-29' },
+      { time: '24:00' },
+      { time: '9:00' },
+      { title: '   ' },
+      { note: 'x'.repeat(2001) },
+      { kind: 'paid_ad' },
+      { account: 'unknown' },
+    ]) {
+      assert.equal((await create({ ...plan, ...invalid })).status, 400)
+    }
+    const april = {
+      ...plan,
+      id: randomUUID(),
+      date: '2028-04-01',
+      account: 'jbgolfclub_bundang',
+      time: '00:00',
+    }
+    const feb = {
+      ...plan,
+      id: randomUUID(),
+      date: '2028-02-01',
+      account: 'jbgolfclub_official',
+      time: '23:59',
+      kind: 'reel',
+    }
+    for (const input of [plan, april, feb]) {
+      const res = await create(input)
+      assert.equal(res.status, 200)
+      assert.deepEqual((await res.json()).item, { ...input, version: 1 })
+    }
+    const res = await f.send(month, { cookie })
+    assert.match(res.headers.get('cache-control'), /no-store/)
+    const response = await res.json()
+    assert.equal(response.month, '2028-02')
+    assert.deepEqual(
+      response.schedules.map((row) => row.id),
+      [feb.id, plan.id],
+    )
+    assert.equal(
+      (await create({ ...plan, title: 'conflicting retry' })).status,
+      409,
+    )
+    const edits = await Promise.all(
+      ['변경 A', '변경 B'].map((title) =>
+        f.send(schedules + '/' + plan.id, {
+          cookie,
+          headers,
+          method: 'PUT',
+          body: { ...plan, title, date: '2028-03-01', version: 1 },
+        }),
+      ),
+    )
+    assert.deepEqual(edits.map((x) => x.status).sort(), [200, 409])
+    const edited = (await edits.find((x) => x.status === 200).json()).item
+    assert.equal(edited.version, 2)
+    assert.equal((await (await create(plan)).json()).item.title, edited.title)
+    assert.equal(
+      (await (await f.send(month, { cookie })).json()).schedules.length,
+      1,
+    )
+    assert.equal(
+      (
+        await (
+          await f.send('/api/admin/calendar?month=2028-03', { cookie })
+        ).json()
+      ).schedules[0].id,
+      plan.id,
+    )
+    const remove = (version, options = {}) =>
+      f.send(schedules + '/' + plan.id, {
+        cookie,
+        headers,
+        method: 'DELETE',
+        body: { version },
+        ...options,
+      })
+    assert.equal((await remove(1)).status, 409)
+    assert.equal((await remove(2, { headers: {} })).status, 403)
+    assert.equal((await remove(2, { cookie: undefined })).status, 401)
+    assert.deepEqual(
+      await Promise.all([remove(2), remove(2)]).then((pair) =>
+        Promise.all(pair.map((r) => r.json())),
+      ),
+      [{ deleted: true }, { deleted: true }],
+    )
+    assert.equal((await create(plan)).status, 409)
+    assert.equal(
+      (
+        await f.send(schedules + '/' + plan.id, {
+          cookie,
+          headers,
+          method: 'PUT',
+          body: { ...plan, version: 2 },
+        })
+      ).status,
+      404,
+    )
+    const retired = await f.db
+      .prepare('SELECT * FROM calendar_schedules WHERE id=?')
+      .bind(plan.id)
+      .first()
+    for (const [key, val] of Object.entries(retired))
+      if (!['id', 'version'].includes(key)) assert.equal(val, null)
+    assert.equal(
+      (
+        await (
+          await f.send('/api/admin/calendar?month=2028-04', { cookie })
+        ).json()
+      ).schedules[0].id,
+      april.id,
+    )
+  } finally {
+    await f.mf.dispose()
+  }
+})
 
 async function inquiriesFixture({ legacy = false } = {}) {
   return fixture(

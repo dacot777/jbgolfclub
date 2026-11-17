@@ -25,5 +25,5 @@
       "migrations_dir": "worker/migrations",
     },
   ],
-  "triggers": { "crons": ["0 0 * * *", "15 * * * *"] },
+  "triggers": { "crons": ["0 0 * * *", "15 * * * *", "45 * * * *"] },
 }

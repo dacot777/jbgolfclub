@@ -31,11 +31,15 @@ export function configuration(env: Env) {
     return false
   }
 }
-export function authorizationUrl(env: Env, state: string) {
+export function authorizationUrl(
+  env: Env,
+  state: string,
+  callbackPath = CALLBACK,
+) {
   const url = new URL('https://www.instagram.com/oauth/authorize')
   url.search = new URLSearchParams({
     client_id: env.INSTAGRAM_APP_ID,
-    redirect_uri: env.APP_ORIGIN + CALLBACK,
+    redirect_uri: env.APP_ORIGIN + callbackPath,
     response_type: 'code',
     scope: 'instagram_business_basic',
     state,
@@ -81,7 +85,11 @@ function tokenResponse(token: Token, requireExpiry = false) {
     throw new ConnectionError('instagram_invalid_response', 502)
   return token
 }
-export async function exchangeCode(env: Env, code: string) {
+export async function exchangeCode(
+  env: Env,
+  code: string,
+  callbackPath = CALLBACK,
+) {
   const short = tokenResponse(
     await requestJson<Token>('https://api.instagram.com/oauth/access_token', {
       method: 'POST',
@@ -89,7 +97,7 @@ export async function exchangeCode(env: Env, code: string) {
         client_id: env.INSTAGRAM_APP_ID,
         client_secret: env.INSTAGRAM_APP_SECRET,
         grant_type: 'authorization_code',
-        redirect_uri: env.APP_ORIGIN + CALLBACK,
+        redirect_uri: env.APP_ORIGIN + callbackPath,
         code,
       }),
     }),

@@ -20,7 +20,6 @@ import {
   NotebookText,
   Search,
   Settings2,
-  ShieldCheck,
   Sparkles,
   Target,
   Users,
@@ -66,7 +65,7 @@ const workspaceRoutes = [
   'news',
   'blog',
   'admin',
-  ...(__INSTAGRAM_BACKEND__ ? ['inquiries'] : []),
+  ...(__INSTAGRAM_BACKEND__ ? ['inquiries', 'calendar'] : []),
 ]
 
 const WeeklyChart = lazy(() =>
@@ -139,7 +138,8 @@ export default function App() {
   )
   const isMedia = active === 'news' || active === 'blog'
   const isInquiries = active === 'inquiries'
-  const isAdmin = active === 'admin' || isInquiries
+  const isCalendar = active === 'calendar'
+  const isAdmin = active === 'admin' || isInquiries || isCalendar
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
     isAdmin
@@ -353,21 +353,15 @@ export default function App() {
             JB GOLF<span>ACADEMY</span>
           </span>
         </a>
-        <div className="workspace">
-          <span className="workspace-symbol">
-            <img src={shieldLogo} alt="" />
-          </span>
-          <span>
-            JB아카데미<small>Instagram 광고 관리</small>
-          </span>
-        </div>
-        <p className="nav-label">WORKSPACE</p>
         <nav aria-label="주 메뉴">
           {[
             { id: 'overview', name: '성과 대시보드', icon: LayoutDashboard },
             { id: 'campaigns', name: '광고 상세', icon: Target },
             ...(__INSTAGRAM_BACKEND__
-              ? [{ id: 'inquiries', name: '문의·상담', icon: MessagesSquare }]
+              ? [
+                  { id: 'calendar', name: '콘텐츠 캘린더', icon: CalendarDays },
+                  { id: 'inquiries', name: '문의·상담', icon: MessagesSquare },
+                ]
               : []),
             { id: 'news', name: '기사', icon: Newspaper },
             { id: 'blog', name: '블로그', icon: NotebookText },
@@ -394,29 +388,6 @@ export default function App() {
             <span>계정 연결</span>
           </button>
         </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <ShieldCheck size={19} aria-hidden="true" />
-            <strong>
-              보고는 간결하게.
-              <br />
-              판단은 정확하게.
-            </strong>
-            <p>
-              매주 확인하는 광고 성과,
-              <br />한 화면에서 정리하세요.
-            </p>
-          </div>
-          <button className="profile" onClick={() => setDialog('connect')}>
-            <span className="profile-avatar academy-avatar">
-              <img src={shieldLogo} alt="" />
-            </span>
-            <span>
-              JB아카데미<small>광고 관리 워크스페이스</small>
-            </span>
-            <ChevronRight size={16} aria-hidden="true" />
-          </button>
-        </div>
       </aside>
 
       <div className="main-shell">
@@ -424,15 +395,17 @@ export default function App() {
           <div className="breadcrumb">
             워크스페이스 <ChevronRight size={14} aria-hidden="true" />
             <span>
-              {isInquiries
-                ? '문의·상담 현황'
-                : isAdmin
-                  ? '관리자'
-                  : active === 'news'
-                    ? '기사'
-                    : active === 'blog'
-                      ? '블로그'
-                      : '성과 대시보드'}
+              {isCalendar
+                ? '콘텐츠 캘린더'
+                : isInquiries
+                  ? '문의·상담 현황'
+                  : isAdmin
+                    ? '관리자'
+                    : active === 'news'
+                      ? '기사'
+                      : active === 'blog'
+                        ? '블로그'
+                        : '성과 대시보드'}
             </span>
           </div>
           <div className="topbar-right">
@@ -469,10 +442,7 @@ export default function App() {
             <>
               <section id="overview" className="page-heading">
                 <div>
-                  <p className="eyebrow">MARKETING OVERVIEW</p>
-                  <h1>
-                    인스타그램 광고 성과<span>.</span>
-                  </h1>
+                  <h1>인스타그램 광고 성과.</h1>
                   <p className="page-description">
                     {showReviewed
                       ? 'JB GOLF ACADEMY · 광고별 성과와 주간 변화를 한눈에 확인하세요.'
@@ -505,7 +475,11 @@ export default function App() {
             <Suspense
               fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
             >
-              <AdminAnalytics key={active} inquiries={isInquiries} />
+              <AdminAnalytics
+                key={active}
+                inquiries={isInquiries}
+                calendar={isCalendar}
+              />
             </Suspense>
           ) : isMedia ? (
             <Suspense
