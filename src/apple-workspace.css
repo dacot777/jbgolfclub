@@ -261,7 +261,7 @@
   letter-spacing: -0.05em;
   font-size: 30px;
 }
-:where(.app-shell, .calendar-sharing) [data-slot='button'],
+.app-shell [data-slot='button'],
 [data-slot='dialog-content'] [data-slot='button'] {
   border-radius: 999px;
 }
@@ -273,28 +273,13 @@
   background-color: #fff;
   border-radius: 18px;
 }
-.calendar-owner-actions,
-.calendar-share-actions {
+.calendar-owner-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-.calendar-owner-actions {
   justify-content: flex-end;
   margin-bottom: 12px;
-}
-.calendar-sharing label {
-  display: grid;
-  gap: 5px;
-  font-weight: 600;
-}
-.calendar-sharing input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 13px;
 }
 .calendar-viewer header {
   display: flex;

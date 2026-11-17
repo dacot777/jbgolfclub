@@ -86,9 +86,7 @@ async function graph<T>(
   return result as T
 }
 
-function thumbnail(media: Media) {
-  const raw =
-    media.media_type === 'VIDEO' ? media.thumbnail_url : media.media_url
+function safeThumbnailUrl(raw: unknown) {
   if (typeof raw !== 'string' || raw.length > 8192) return null
   try {
     const url = new URL(raw)
@@ -105,6 +103,12 @@ function thumbnail(media: Media) {
     /* Unavailable remote media keeps its caption and link. */
   }
   return null
+}
+
+function thumbnail(media: Media) {
+  return safeThumbnailUrl(
+    media.media_type === 'VIDEO' ? media.thumbnail_url : media.media_url,
+  )
 }
 
 function item(media: Media): Item | null {
@@ -337,7 +341,7 @@ export async function calendarInstagramThumbnail(
       }
     >()
   if (!row) return missing()
-  let url = row.thumbnail_url
+  let url = safeThumbnailUrl(row.thumbnail_url)
   const hex = url && new URL(url).searchParams.get('oe')
   const soon =
     hex &&

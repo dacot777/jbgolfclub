@@ -5,7 +5,7 @@ test.use({ baseURL: 'http://127.0.0.1:5174', hasTouch: true })
 
 const demoAd = { id: 'synthetic-published-card', title: '검증 캠프 광고' }
 const sessionToken = 'synthetic-inquiry-session-csrf'
-const testPassword = 'synthetic-inquiry-login'
+const deviceGrant = 'T'.repeat(43)
 
 async function expectTotal(summary: Locator, count: number) {
   await expect(summary).toHaveText(
@@ -15,6 +15,7 @@ async function expectTotal(summary: Locator, count: number) {
 
 async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   let signedIn = initiallySignedIn
+  let grantUses = 0
   let reads = 0
   let analyticsEvents = 0
   const deletionRequests: string[] = []
@@ -23,28 +24,32 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
     analyticsEvents++
     return route.fulfill({ status: 204 })
   })
-  await page.route('**/api/admin/session', (route) =>
+  await page.route('**/api/staff/session', (route) =>
     route.fulfill({
       json: {
-        configured: true,
         authenticated: signedIn,
         ...(signedIn ? { csrfToken: sessionToken } : {}),
       },
     }),
   )
-  await page.route('**/api/admin/login', (route) => {
-    signedIn = route.request().postDataJSON().password === testPassword
-    return route.fulfill(
-      signedIn
-        ? {
-            json: {
-              configured: true,
-              authenticated: true,
-              csrfToken: sessionToken,
-            },
-          }
-        : { status: 401, json: { error: { code: 'invalid_credentials' } } },
-    )
+  await page.route('**/api/staff/activate', (route) => {
+    expect(route.request().method()).toBe('POST')
+    if (route.request().postDataJSON().token !== deviceGrant || grantUses > 0)
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'invalid_grant' } },
+      })
+    grantUses++
+    signedIn = true
+    return route.fulfill({
+      json: { authenticated: true, csrfToken: sessionToken },
+    })
+  })
+  await page.route('**/api/staff/logout', (route) => {
+    expect(route.request().method()).toBe('POST')
+    expect(route.request().headers()['x-csrf-token']).toBe(sessionToken)
+    signedIn = false
+    return route.fulfill({ json: { authenticated: false } })
   })
   await page.route('**/api/meta-ads', (route) =>
     route.fulfill({
@@ -104,26 +109,34 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   }
 }
 
-test('관리자 로그인 전에는 문의 기록을 읽지 않고 인증 후에만 목록을 표시한다', async ({
+test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 보고 연결된 기기에서만 문의를 읽는다', async ({
   page,
 }) => {
   const api = await mockWorkspace(page, false)
+  await page.route('**/api/admin/session', (route) =>
+    route.fulfill({
+      json: {
+        configured: true,
+        authenticated: true,
+        csrfToken: 'analytics-only',
+      },
+    }),
+  )
   await page.goto('/#inquiries')
   await expect(
-    page.getByLabel('관리자 비밀번호', { exact: true }),
+    page.getByRole('heading', { name: /문의·상담 현황/ }),
   ).toBeVisible()
+  await expect(
+    page.getByText(/담당자 기기/, { exact: false }).first(),
+  ).toBeVisible()
+  await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '새 문의', exact: true }),
   ).toHaveCount(0)
   expect(api.reads()).toBe(0)
-  await page
-    .getByLabel('관리자 비밀번호', { exact: true })
-    .fill('wrong-synthetic-password')
-  await page.getByRole('button', { name: '로그인', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('비밀번호')
-  expect(api.reads()).toBe(0)
-  await page.getByLabel('관리자 비밀번호', { exact: true }).fill(testPassword)
-  await page.getByRole('button', { name: '로그인', exact: true }).click()
+  await page.goto('/#staff-device/' + deviceGrant)
+  await expect(page).toHaveURL(/#calendar$/)
+  await page.goto('/#inquiries')
   await expect(
     page.getByRole('heading', { name: '문의 목록', exact: true }),
   ).toBeVisible()
@@ -133,6 +146,10 @@ test('관리자 로그인 전에는 문의 기록을 읽지 않고 인증 후에
   expect(api.reads()).toBeGreaterThan(0)
   const summary = page.getByLabel('전체 문의 현황')
   await expectTotal(summary, 0)
+  await page.getByRole('button', { name: '이 기기 연결 해제' }).click()
+  await expect(page.getByText(/담당자 기기 연결 링크/)).toBeVisible()
+  await expect(summary).toHaveCount(0)
+  await expect(page.locator('input[type="password"]')).toHaveCount(0)
   expect(api.analyticsEvents()).toBe(0)
 })
 

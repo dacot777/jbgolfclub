@@ -194,7 +194,7 @@ function AdPerformance({
   const pauseEvents = liveRange?.pausesByCard.get(ad.id) ?? []
   const status = pauseEvents.length
     ? 'paused'
-    : ad.deliveryStatus === 'paused'
+    : !lifetimeMode && ad.deliveryStatus === 'paused'
       ? undefined
       : ad.deliveryStatus
   const thumbnail = ad.thumbnailUrl ? (
@@ -227,7 +227,14 @@ function AdPerformance({
         )}
         <div>
           {status ? (
-            <span className={`ad-delivery-status ad-status-${status}`}>
+            <span
+              className={`ad-delivery-status ad-status-${status}`}
+              title={
+                pauseEvents.length
+                  ? '선택한 주에 확인된 중단 기록'
+                  : 'Meta에서 마지막으로 확인한 게재 상태'
+              }
+            >
               {statusLabels[status]}
             </span>
           ) : (

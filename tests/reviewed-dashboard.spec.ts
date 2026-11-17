@@ -321,7 +321,11 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
     exact: true,
   })
   await expect(cards).toHaveCount(2)
-  await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
+  const headerBadge = paused.locator('.reviewed-ad-heading .ad-delivery-status')
+  await expect(headerBadge).toHaveText('일시중단')
+  await expect(
+    active.locator('.reviewed-ad-heading .ad-delivery-status'),
+  ).toHaveText('집행 중')
   await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
   await expect(paused).toContainText('첫 집행 확인일')
   await expect(paused).toContainText(/2026\.\s*10\.\s*17/)
@@ -372,7 +376,7 @@ test('기존 게시물 카드에 일시중단 상태와 날짜가 표시된 이�
   await expect(active).not.toContainText('3,786원')
   await lifetime.click()
   await expect(paused).toContainText('7,465원')
-  await expect(paused.getByText('일시중단', { exact: true })).toHaveCount(0)
+  await expect(headerBadge).toHaveText('일시중단')
   await expect(paused.locator('.ad-stop-record')).toHaveCount(0)
   await expect(page.locator('.reviewed-dashboard select')).toHaveCount(0)
   expect(
@@ -444,7 +448,16 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
         lastSyncedAt: '2026-11-22T02:15:00Z',
         timeZone: 'Asia/Seoul',
         currency: 'KRW',
-        cards: [resumed, staleStatus],
+        cards: [
+          resumed,
+          staleStatus,
+          {
+            ...resumed,
+            id: 'status-unknown',
+            title: '합성 상태 미확인 광고',
+            status: 'unknown',
+          },
+        ],
         adPeriods: [before, after, month],
         periods: [],
         daily: [],
@@ -469,6 +482,19 @@ test('재개한 광고의 중단 표시는 첫 관측 주에만 보이며 실적
   await expect(
     card.getByRole('heading', { name: ad.title, exact: true }),
   ).toBeVisible()
+  await expect(card.locator('.ad-delivery-status')).toHaveText('집행 중')
+  await expect(noEvent.locator('.ad-delivery-status')).toHaveText('일시중단')
+  await expect(
+    page
+      .locator('.reviewed-ad')
+      .filter({
+        has: page.getByRole('heading', {
+          name: '합성 상태 미확인 광고',
+          exact: true,
+        }),
+      })
+      .locator('.ad-delivery-status'),
+  ).toHaveText('상태 확인 중')
   await expect(card.locator('.ad-stop-record')).toHaveCount(0)
   await chooseRange(page, '주간', '2026.11.02 – 11.08')
   await expect(card).toContainText('433원')

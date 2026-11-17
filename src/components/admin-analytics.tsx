@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Clock3,
@@ -18,10 +18,6 @@ import {
   type AnalyticsVisit,
 } from '@/lib/analytics-types'
 import '@/admin-analytics.css'
-
-const ContentCalendar = lazy(() => import('./content-calendar'))
-const CalendarShare = lazy(() => import('./calendar-share'))
-const InquiryWorkspace = lazy(() => import('./inquiry-workspace'))
 
 function timestamp(value: string | null) {
   if (!value || !Number.isFinite(Date.parse(value))) return '확인되지 않음'
@@ -176,13 +172,7 @@ function VisitRecord({ visit }: { visit: AnalyticsVisit }) {
   )
 }
 
-export default function AdminAnalytics({
-  inquiries = false,
-  calendar = false,
-}: {
-  inquiries?: boolean
-  calendar?: boolean
-}) {
+export default function AdminAnalytics() {
   const [session, setSession] = useState<AdminSession | null>(null)
   const [checking, setChecking] = useState(true)
   const [password, setPassword] = useState('')
@@ -231,7 +221,7 @@ export default function AdminAnalytics({
     if (error) errorRef.current?.focus()
   }, [error])
   useEffect(() => {
-    if (!session?.authenticated || inquiries || calendar) return
+    if (!session?.authenticated) return
     let active = true
     setLoading(true)
     setError('')
@@ -267,17 +257,9 @@ export default function AdminAnalytics({
     return () => {
       active = false
     }
-  }, [
-    session?.authenticated,
-    days,
-    page,
-    refresh,
-    inquiries,
-    calendar,
-    expireSession,
-  ])
+  }, [session?.authenticated, days, page, refresh, expireSession])
   useEffect(() => {
-    if (!session?.authenticated || inquiries || calendar) return
+    if (!session?.authenticated) return
     const update = () => {
       if (
         document.visibilityState === 'visible' &&
@@ -291,7 +273,7 @@ export default function AdminAnalytics({
       window.removeEventListener('focus', update)
       document.removeEventListener('visibilitychange', update)
     }
-  }, [session?.authenticated, inquiries, calendar])
+  }, [session?.authenticated])
 
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -378,14 +360,8 @@ export default function AdminAnalytics({
             src={`${import.meta.env.BASE_URL}brand/jb-academy-shield.png`}
             alt="JB GOLF ACADEMY 방패 로고"
           />
-          <h1>{calendar ? '콘텐츠 캘린더' : '관리자 로그인'}</h1>
-          <p>
-            {calendar
-              ? '세 계정의 발행 콘텐츠를 확인하고 일정을 관리하려면 로그인하세요.'
-              : inquiries
-                ? '문의와 인계 담당자를 확인하려면 로그인하세요.'
-                : '방문 기록은 관리자 인증 후에만 확인할 수 있습니다.'}
-          </p>
+          <h1>관리자 로그인</h1>
+          <p>방문 기록은 관리자 인증 후에만 확인할 수 있습니다.</p>
           {errorNotice}
           {session && !session.configured && (
             <p className="admin-unconfigured" role="status">
@@ -415,37 +391,15 @@ export default function AdminAnalytics({
       </section>
     )
 
-  if (calendar)
-    return (
-      <Suspense fallback={<p role="status">캘린더를 여는 중입니다.</p>}>
-        {errorNotice}
-        <div className="calendar-owner-actions">
-          <CalendarShare
-            csrfToken={session.csrfToken!}
-            onUnauthorized={expireSession}
-          />
-          <Button variant="ghost" disabled={busy} onClick={() => void logout()}>
-            <LogOut aria-hidden="true" />
-            로그아웃
-          </Button>
-        </div>
-        <ContentCalendar
-          csrfToken={session.csrfToken!}
-          onUnauthorized={expireSession}
-        />
-      </Suspense>
-    )
   const heading = (
     <section className="page-heading">
       <div>
         <h1>
-          {inquiries ? '문의·상담 현황' : '방문 기록'}
+          방문 기록
           <span>.</span>
         </h1>
         <p className="page-description">
-          {inquiries
-            ? '문의가 들어온 채널과 유입 경로, 인계 담당자를 기록합니다.'
-            : '사이트 접속과 메뉴별 활동을 관리자만 확인합니다.'}
+          사이트 접속과 메뉴별 활동을 관리자만 확인합니다.
         </p>
       </div>
       <div className="admin-actions">
@@ -460,19 +414,6 @@ export default function AdminAnalytics({
       </div>
     </section>
   )
-  if (inquiries)
-    return (
-      <div className="admin-analytics">
-        {heading}
-        {errorNotice}
-        <Suspense fallback={<p role="status">문의 목록을 여는 중입니다.</p>}>
-          <InquiryWorkspace
-            csrfToken={session.csrfToken!}
-            onUnauthorized={expireSession}
-          />
-        </Suspense>
-      </div>
-    )
   return (
     <div className="admin-analytics">
       {heading}

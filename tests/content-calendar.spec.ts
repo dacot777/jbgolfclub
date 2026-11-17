@@ -59,13 +59,13 @@ function monthly(month: string, schedules: CalendarSchedule[]): CalendarMonth {
   }
 }
 
-async function mockOwner(page: Page) {
+async function mockStaff(page: Page) {
   const records = new Map([[plan.id, { ...plan }]])
   let failRead = false
   await page.clock.setFixedTime(new Date(day + 'T03:00:00Z'))
-  await page.route('**/api/admin/session', (route) =>
+  await page.route('**/api/staff/session', (route) =>
     route.fulfill({
-      json: { configured: true, authenticated: true, csrfToken },
+      json: { authenticated: true, csrfToken },
     }),
   )
   await page.route('**/api/admin/calendar?*', (route) => {
@@ -108,7 +108,7 @@ test('calendar shows thumbnails before other entries and filters all three accou
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await mockOwner(page)
+  await mockStaff(page)
   await page.goto('/#calendar')
   const calendar = page.getByRole('region', {
     name: '인스타그램 콘텐츠 캘린더',
@@ -170,7 +170,7 @@ test('calendar shows thumbnails before other entries and filters all three accou
 test('schedule creates, edits to a different month, and deletes after confirmation', async ({
   page,
 }) => {
-  const { records } = await mockOwner(page)
+  const { records } = await mockStaff(page)
   await page.goto('/#calendar')
   await page.getByRole('button', { name: '일정 등록', exact: true }).click()
   const dialog = page.getByRole('dialog')
@@ -209,10 +209,54 @@ test('schedule creates, edits to a different month, and deletes after confirmati
   expect([...records.values()]).toEqual([plan])
 })
 
+test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다른 달을 조회한다', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date(day + 'T03:00:00Z'))
+  await page.route('**/api/staff/session', (route) =>
+    route.fulfill({ json: { authenticated: false } }),
+  )
+  const privateReads: string[] = []
+  await page.route('**/api/admin/calendar**', (route) => {
+    privateReads.push(route.request().url())
+    return route.fulfill({ status: 401, json: {} })
+  })
+  await page.route('**/api/calendar?*', (route) => {
+    expect(route.request().method()).toBe('GET')
+    const month = new URL(route.request().url()).searchParams.get('month')!
+    return route.fulfill({ json: monthly(month, [plan]) })
+  })
+  await page.goto('/#calendar')
+  const calendar = page.getByRole('region', {
+    name: '인스타그램 콘텐츠 캘린더',
+  })
+  const date = calendar.getByRole('button', { name: /^2026-11-17.*콘텐츠 3개/ })
+  await expect(date.locator('img')).toHaveCount(2)
+  await expect(
+    calendar.getByRole('button', { name: /일정 등록|계정 관리/ }),
+  ).toHaveCount(0)
+  await expect(page.locator('input[type="password"]')).toHaveCount(0)
+  await date.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(plan.title, { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByRole('link', { name: '테스트 릴스 Instagram에서 보기' }),
+  ).toBeVisible()
+  await expect(
+    dialog.getByRole('button', { name: /등록|수정|삭제/ }),
+  ).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await calendar.getByRole('button', { name: '다음 달' }).click()
+  await expect(
+    calendar.getByRole('heading', { name: '2026년 12월' }),
+  ).toBeVisible()
+  expect(privateReads).toEqual([])
+})
+
 test('load error can be retried and shared view exposes no editing or connection controls', async ({
   page,
 }) => {
-  const mock = await mockOwner(page)
+  const mock = await mockStaff(page)
   mock.setFailRead(true)
   await page.goto('/#calendar')
   await expect(page.getByRole('alert')).toContainText(
@@ -246,7 +290,7 @@ test('load error can be retried and shared view exposes no editing or connection
 test('stale schedule keeps the newer edit and offers a working refresh', async ({
   page,
 }) => {
-  const { records } = await mockOwner(page)
+  const { records } = await mockStaff(page)
   await page.route('**/api/admin/calendar/schedules/' + plan.id, (route) => {
     records.set(plan.id, { ...plan, title: '다른 창에서 변경', version: 2 })
     return route.fulfill({
@@ -271,10 +315,10 @@ test('stale schedule keeps the newer edit and offers a working refresh', async (
   ).toBeVisible()
 })
 
-test('unconfigured owner sees official setup path and a selectable redirect address', async ({
+test('unconfigured staff device sees official setup path and a selectable redirect address', async ({
   page,
 }) => {
-  await mockOwner(page)
+  await mockStaff(page)
   await page.route('**/api/admin/calendar?*', (route) => {
     const month = new URL(route.request().url()).searchParams.get('month')!
     const empty: CalendarMonth = {

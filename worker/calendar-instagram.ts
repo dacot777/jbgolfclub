@@ -13,6 +13,7 @@ import {
 } from './calendar-instagram-feed'
 import type { Env } from './types'
 import { ConnectionError } from './types'
+import { staffSession } from './staff-access'
 export {
   calendarInstagramThumbnail,
   syncCalendarInstagram,
@@ -90,12 +91,14 @@ export async function calendarInstagramCallback(request: Request, env: Env) {
     .find((s) => s.startsWith(COOKIE + '='))
     ?.slice(COOKIE.length + 1)
   if (!state || !cookie || !equal(state, cookie)) return finish('invalid_state')
+  const session = await staffSession(request, env)
+  if (!session) return finish('expired_state')
   const now = Date.now()
   const pending = await env.DB.prepare(
     `DELETE FROM calendar_instagram_states WHERE state_hash=? AND expires_at>?
-    AND session_hash IN(SELECT session_hash FROM admin_sessions WHERE expires_at>?) RETURNING account,session_hash`,
+    AND session_hash=? RETURNING account,session_hash`,
   )
-    .bind(await hash(state), now, now)
+    .bind(await hash(state), now, session.session_hash)
     .first<{ account: string; session_hash: string }>()
   if (!pending || !isCalendarAccount(pending.account))
     return finish('expired_state')
@@ -121,7 +124,7 @@ export async function calendarInstagramCallback(request: Request, env: Env) {
     const saved = await env.DB.prepare(
       `INSERT INTO calendar_instagram_accounts(account,user_id,oauth_user_id,app_scoped_id,
       encrypted_token,token_expires_at,refreshed_at)
-      SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM admin_sessions WHERE session_hash=? AND expires_at>?)
+      SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM staff_sessions WHERE session_hash=? AND expires_at>?)
       ON CONFLICT(account) DO UPDATE SET oauth_user_id=excluded.oauth_user_id,app_scoped_id=excluded.app_scoped_id,
       encrypted_token=excluded.encrypted_token,token_expires_at=excluded.token_expires_at,refreshed_at=excluded.refreshed_at,
       sync_error=NULL,lease=NULL,lease_until=0

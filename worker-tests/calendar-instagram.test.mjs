@@ -1,20 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash, createHmac } from 'node:crypto'
+import { createHmac } from 'node:crypto'
+import { issueStaffGrant } from './staff-grant-fixture.mjs'
 import { readFile } from 'node:fs/promises'
 import { build } from 'esbuild'
 import { Miniflare, createFetchMock } from 'miniflare'
 
 const origin = 'https://calendar.test'
-const password = 'fixture-password'
-const salt = '0123456789abcdef0123456789abcdef'
-const verifier =
-  'v1$' +
-  salt +
-  '$' +
-  createHash('sha256')
-    .update(salt + ':' + password)
-    .digest('hex')
 const appSecret = 'test-only-calendar-secret'
 const token = 'test-only-long-grant'
 const account = 'jbgolfclub_bundang'
@@ -35,6 +27,7 @@ const migrations = await Promise.all(
     '0004_admin_analytics',
     '0010_calendar_schedules',
     '0011_calendar_instagram',
+    '0013_staff_access',
   ].map((n) => readFile('worker/migrations/' + n + '.sql', 'utf8')),
 )
 
@@ -54,7 +47,6 @@ async function fixture() {
       INSTAGRAM_ACCOUNT_USERNAME: 'jbgolfacademy',
       INSTAGRAM_API_VERSION: 'v26.0',
       TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
-      ADMIN_PASSWORD_VERIFIER: verifier,
       ADMIN_ANALYTICS_KEY:
         'test-only-admin-key-0123456789abcdefabcdef9876543210',
     },
@@ -70,9 +62,9 @@ async function fixture() {
   )
   const request = (path, options = {}) =>
     mf.dispatchFetch(origin + path, { redirect: 'manual', ...options })
-  const login = await request('/api/admin/login', {
+  const login = await request('/api/staff/activate', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ token: await issueStaffGrant(db) }),
     headers: { Origin: origin, 'Content-Type': 'application/json' },
   })
   assert.equal(login.status, 200)
@@ -111,7 +103,7 @@ async function fixture() {
   }
   const finish = (pending) =>
     request(callback + '?code=test&state=' + pending.state, {
-      headers: { Cookie: pending.cookie },
+      headers: { Cookie: [pending.cookie, cookie].filter(Boolean).join('; ') },
     })
   const month = async () =>
     (
@@ -354,7 +346,7 @@ test('calendar sign-in rejects the wrong user, swapped ID, replay and logged-out
       (await f.finish({ ...pending, cookie: '' })).headers.get('Location'),
       /invalid_state/,
     )
-    await f.db.prepare('DELETE FROM admin_sessions').run()
+    await f.db.prepare('DELETE FROM staff_sessions').run()
     assert.match(
       (await f.finish(pending)).headers.get('Location'),
       /expired_state/,

@@ -1,4 +1,5 @@
 import { test } from 'node:test'
+import { issueStaffGrant } from './staff-grant-fixture.mjs'
 import assert from 'node:assert/strict'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -63,7 +64,7 @@ async function fixture(overrides = {}, extraMigrations = []) {
       [
         migration,
         ...(await Promise.all(
-          extraMigrations.map((name) =>
+          ['0013_staff_access', ...extraMigrations].map((name) =>
             readFile('worker/migrations/' + name + '.sql', 'utf8'),
           ),
         )),
@@ -112,7 +113,17 @@ async function fixture(overrides = {}, extraMigrations = []) {
       ...(await response.json()),
     }
   }
-  return { mf, db, send, signIn }
+  const activate = async () => {
+    const response = await send('/api/staff/activate', {
+      body: { token: await issueStaffGrant(db) },
+    })
+    assert.equal(response.status, 200)
+    return {
+      cookie: response.headers.get('Set-Cookie').split(';')[0],
+      ...(await response.json()),
+    }
+  }
+  return { mf, db, send, signIn, activate }
 }
 const event = (overrides = {}) => ({
   visitId: randomUUID(),
@@ -127,6 +138,106 @@ const cookieFrom = (response) =>
   response.headers.get('Set-Cookie')?.split(';')[0]
 const value = (db, sql) => db.prepare(sql).first()
 
+test('운영 기기 링크는 같은 출처에서 한 번만 사용되고, 운영 권한은 방문자 통계와 분리된다', async () => {
+  const f = await fixture()
+  try {
+    const token = await issueStaffGrant(f.db)
+    const activate = (t, headers) =>
+      f.send('/api/staff/activate', { body: { token: t }, headers })
+    assert.equal(
+      (await activate(token, { Origin: 'https://unrelated.test' })).status,
+      403,
+    )
+    assert.equal(
+      (await activate(await issueStaffGrant(f.db, Date.now() - 1))).status,
+      401,
+    )
+    const pair = await Promise.all([activate(token), activate(token)])
+    assert.deepEqual(pair.map((r) => r.status).sort(), [200, 401])
+    const accepted = pair.find((r) => r.status === 200)
+    const set = accepted.headers.get('Set-Cookie')
+    assert.match(set, /^__Host-jbgolf_staff=/)
+    for (const attr of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/'])
+      assert.ok(set.includes(attr))
+    const cookie = cookieFrom(accepted)
+    const { authenticated, csrfToken } = await accepted.json()
+    assert.equal(authenticated, true)
+    const stored = await value(f.db, 'SELECT * FROM staff_sessions')
+    assert.notEqual(stored.session_hash, cookie.split('=')[1])
+    assert.equal(
+      (await value(f.db, 'SELECT COUNT(*) AS n FROM staff_sessions')).n,
+      1,
+    )
+    assert.equal((await f.send('/api/admin/analytics', { cookie })).status, 401)
+    assert.equal(
+      (
+        await f.send('/api/admin/analytics', {
+          cookie: cookie.replace('jbgolf_staff', 'jbgolf_admin'),
+        })
+      ).status,
+      401,
+    )
+    const owner = await f.signIn()
+    for (const path of [
+      '/api/admin/calendar',
+      '/api/admin/calendar/share',
+      '/api/admin/inquiries',
+    ])
+      assert.equal((await f.send(path, { cookie: owner.cookie })).status, 401)
+    assert.deepEqual(
+      await (
+        await f.send('/api/staff/session', { cookie: owner.cookie })
+      ).json(),
+      { authenticated: false },
+    )
+    assert.equal(
+      (await f.send('/api/analytics/event', { cookie, body: event() })).status,
+      204,
+    )
+    assert.equal(
+      (await value(f.db, 'SELECT COUNT(*) AS n FROM analytics_visits')).n,
+      0,
+    )
+    await f.db
+      .prepare('UPDATE staff_sessions SET expires_at=?')
+      .bind(Date.now() + 60_000)
+      .run()
+    const renewed = await f.send('/api/staff/session', { cookie })
+    assert.deepEqual(await renewed.json(), { authenticated: true, csrfToken })
+    assert.equal(cookieFrom(renewed), cookie)
+    assert.ok(
+      (await value(f.db, 'SELECT expires_at FROM staff_sessions')).expires_at >
+        Date.now() + 30 * 86_400_000,
+    )
+    const logout = (headers) =>
+      f.send('/api/staff/logout', { cookie, body: {}, headers })
+    assert.equal(
+      (await logout({ 'X-CSRF-Token': owner.csrfToken })).status,
+      403,
+    )
+    assert.equal(
+      (
+        await logout({
+          'X-CSRF-Token': csrfToken,
+          Origin: 'https://unrelated.test',
+        })
+      ).status,
+      403,
+    )
+    assert.match(
+      (await logout({ 'X-CSRF-Token': csrfToken })).headers.get('Set-Cookie'),
+      /Max-Age=0/,
+    )
+    assert.deepEqual(
+      await (await f.send('/api/staff/session', { cookie })).json(),
+      { authenticated: false },
+    )
+    assert.equal((await activate(token)).status, 401)
+  } finally {
+    await f.mf.dispose()
+  }
+})
+
 test('calendar viewer links authorize only the month and thumbnails, rotate, expire and revoke', async () => {
   const f = await fixture({}, [
     '0001_single_instagram',
@@ -139,7 +250,7 @@ test('calendar viewer links authorize only the month and thumbnails, rotate, exp
     const month = '/api/calendar/view?month=2028-02'
     const schedule = '/api/admin/calendar/schedules'
     const thumbnail = '/api/calendar/view/thumbnail/90001'
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     const admin = { cookie, headers, body: {} }
     const bearer = (token) => ({
@@ -279,7 +390,7 @@ test('calendar protects executive plans and monthly reads, including all three a
       (await f.send('/api/admin/calendar/instagram/thumbnail/123')).status,
       401,
     )
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     assert.equal(
       (await f.send('/api/admin/calendar?month=2028-13', { cookie })).status,
@@ -464,13 +575,13 @@ const newInquiry = () => ({
 })
 const inquiries = '/api/admin/inquiries'
 
-test('private inquiry writes require the admin session, CSRF and correct origin and reject invalid dates and ad attribution', async () => {
+test('private inquiry writes require a staff session, CSRF and correct origin and reject invalid dates and ad attribution', async () => {
   const f = await inquiriesFixture()
   try {
     const input = newInquiry()
     assert.equal((await f.send(inquiries)).status, 401)
     assert.equal((await f.send(inquiries, { body: input })).status, 401)
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     const write = (body) => f.send(inquiries, { cookie, headers, body })
     assert.equal((await f.send(inquiries, { cookie, body: input })).status, 403)
@@ -549,7 +660,7 @@ test('branch migration preserves an existing inquiry, legacy creates can retry a
         .filter(Boolean)
         .map((s) => f.db.prepare(s)),
     )
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const options = { cookie, headers: { 'X-CSRF-Token': csrfToken } }
     const create = (body) => f.send(inquiries, { ...options, body })
     const update = (version, fields) =>
@@ -608,7 +719,7 @@ test('branch migration preserves an existing inquiry, legacy creates can retry a
 test('only an authorized versioned delete removes an inquiry; repeated delete and delayed create cannot restore it', async () => {
   const f = await inquiriesFixture()
   try {
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     const options = { cookie, headers }
     const input = {
@@ -689,7 +800,7 @@ test('only an authorized versioned delete removes an inquiry; repeated delete an
 test('inquiry fields are encrypted, POST retries preserve subsequent edits, and optimistic updates prevent lost changes', async () => {
   const f = await inquiriesFixture()
   try {
-    const { cookie, csrfToken } = await f.signIn()
+    const { cookie, csrfToken } = await f.activate()
     const headers = { 'X-CSRF-Token': csrfToken }
     const input = {
       ...newInquiry(),
@@ -800,7 +911,12 @@ test('관리자 정보는 비인증에 비공개이며 세션·CSRF·로그아�
     assert.equal(auth.configured, true)
     assert.equal(auth.authenticated, true)
     assert.equal(auth.csrfToken.length, 43)
-    const ads = await f.send('/api/admin/meta-ads', { cookie: auth.cookie })
+    assert.equal(
+      (await f.send('/api/admin/meta-ads', { cookie: auth.cookie })).status,
+      401,
+    )
+    const staff = await f.activate()
+    const ads = await f.send('/api/admin/meta-ads', { cookie: staff.cookie })
     assert.equal(ads.status, 200)
     assert.match(ads.headers.get('Cache-Control'), /no-store/)
     assert.equal((await ads.json()).status, 'unconfigured')

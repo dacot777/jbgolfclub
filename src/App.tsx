@@ -57,6 +57,7 @@ import '@/reviewed-dashboard.css'
 
 const ReviewedDashboard = lazy(() => import('@/components/reviewed-dashboard'))
 const MediaWorkspace = lazy(() => import('@/components/media-workspace'))
+const StaffWorkspace = lazy(() => import('@/components/staff-workspace'))
 const AdminAnalytics = lazy(() => import('@/components/admin-analytics'))
 const shieldLogo = `${import.meta.env.BASE_URL}brand/jb-academy-shield.png`
 const workspaceRoutes = [
@@ -139,10 +140,10 @@ export default function App() {
   const isMedia = active === 'news' || active === 'blog'
   const isInquiries = active === 'inquiries'
   const isCalendar = active === 'calendar'
-  const isAdmin = active === 'admin' || isInquiries || isCalendar
+  const isWorkArea = active === 'admin' || isInquiries || isCalendar
   const adminClicks = useRef({ count: 0, lastAt: 0 })
   useVisitorTracker(
-    isAdmin
+    isWorkArea
       ? null
       : dialog === 'connect'
         ? 'connection'
@@ -152,7 +153,7 @@ export default function App() {
   )
   const instagram = useInstagramConnection()
   const reviewed = useReviewedPerformance()
-  const meta = useCardPerformance(!isMedia && !isAdmin && !sample)
+  const meta = useCardPerformance(!isMedia && !isWorkArea && !sample)
   const showReviewed =
     !sample && Boolean(reviewed.data?.ads.length || meta.report?.cards?.length)
   const linkedInstagram = instagram.status?.authenticated
@@ -198,10 +199,10 @@ export default function App() {
   }, [])
   useEffect(() => {
     adminClicks.current = { count: 0, lastAt: 0 }
-    if (isMedia || isAdmin) window.scrollTo({ top: 0, behavior: 'instant' })
+    if (isMedia || isWorkArea) window.scrollTo({ top: 0, behavior: 'instant' })
     else if (active === 'campaigns')
       document.getElementById('campaigns')?.scrollIntoView()
-  }, [active, isMedia, isAdmin, sample])
+  }, [active, isMedia, isWorkArea, sample])
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.hash === '#records' || url.hash === '#weekly') {
@@ -399,7 +400,7 @@ export default function App() {
                 ? '콘텐츠 캘린더'
                 : isInquiries
                   ? '문의·상담 현황'
-                  : isAdmin
+                  : isWorkArea
                     ? '관리자'
                     : active === 'news'
                       ? '기사'
@@ -411,19 +412,23 @@ export default function App() {
           <div className="topbar-right">
             <span className="connection-status">
               <i />
-              {isAdmin
-                ? '관리자 전용'
-                : isMedia
-                  ? '@jbgolfacademy'
-                  : showReviewed
-                    ? '@jbgolfacademy'
-                    : sample
-                      ? '예시 데이터 모드'
-                      : linkedInstagram
-                        ? linkedInstagram.needsReconnect
-                          ? 'Instagram 재연결 필요'
-                          : 'Instagram 프로필 연결됨'
-                        : 'Instagram 계정 미연결'}
+              {isCalendar
+                ? '한국 시간'
+                : isInquiries
+                  ? '담당자 업무공간'
+                  : isWorkArea
+                    ? '관리자 전용'
+                    : isMedia
+                      ? '@jbgolfacademy'
+                      : showReviewed
+                        ? '@jbgolfacademy'
+                        : sample
+                          ? '예시 데이터 모드'
+                          : linkedInstagram
+                            ? linkedInstagram.needsReconnect
+                              ? 'Instagram 재연결 필요'
+                              : 'Instagram 프로필 연결됨'
+                            : 'Instagram 계정 미연결'}
             </span>
             <button
               className="help-button"
@@ -438,7 +443,7 @@ export default function App() {
           </div>
         </header>
         <main id="main">
-          {!isAdmin && !isMedia && (
+          {!isWorkArea && !isMedia && (
             <>
               <section id="overview" className="page-heading">
                 <div>
@@ -463,7 +468,7 @@ export default function App() {
               </section>
             </>
           )}
-          {reviewed.error && !sample && !isMedia && !isAdmin && (
+          {reviewed.error && !sample && !isMedia && !isWorkArea && (
             <div className="reviewed-load-error" role="status">
               {reviewed.error}
               <Button variant="outline" onClick={() => void reviewed.reload()}>
@@ -471,15 +476,13 @@ export default function App() {
               </Button>
             </div>
           )}
-          {isAdmin ? (
-            <Suspense
-              fallback={<p role="status">관리자 페이지를 여는 중입니다.</p>}
-            >
-              <AdminAnalytics
-                key={active}
-                inquiries={isInquiries}
-                calendar={isCalendar}
-              />
+          {isWorkArea ? (
+            <Suspense fallback={<p role="status">페이지를 여는 중입니다.</p>}>
+              {isCalendar || isInquiries ? (
+                <StaffWorkspace page={isCalendar ? 'calendar' : 'inquiries'} />
+              ) : (
+                <AdminAnalytics />
+              )}
             </Suspense>
           ) : isMedia ? (
             <Suspense

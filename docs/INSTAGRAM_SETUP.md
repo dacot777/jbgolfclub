@@ -4,10 +4,12 @@
 
 달력은 `jbgolfacademy`, `jbgolfclub_official`, `jbgolfclub_bundang`의 게시물과 릴스를 읽습니다. 각 계정이 비즈니스 또는 크리에이터 계정이어야 하며 계정별로 운영자의 승인이 필요합니다. 기존 대시보드의 단일 프로필 로그인과 광고 계정 조회 권한은 그대로 사용할 수 있습니다.
 
+캘린더 주소(`#calendar`)를 연 방문자는 비밀번호 없이 일정 제목·날짜와 이미 수집된 게시물·릴스를 확인할 수 있습니다. 일정 메모·편집과 계정 연결은 [등록한 운영 기기](ADMIN_ANALYTICS.md#비밀번호-없는-운영-기기)에서만 이용합니다. 사이트의 관리자 비밀번호는 방문 통계 전용입니다.
+
 1. Meta 개발자 앱에서 **Instagram API with Instagram Login**을 설정합니다. 읽기에 사용하는 권한은 `instagram_business_basic`입니다. 개발 모드라면 사용할 회사 계정에 필요한 앱 역할 또는 테스터 초대 수락 상태를 확인합니다. [Meta Instagram Login 안내](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/)
 2. 앱의 Instagram 로그인 설정에 달력용 리디렉션 주소 `https://jbgolf-connection.jbgolfacademy.workers.dev/api/auth/instagram/calendar/callback`를 추가합니다. 기존 프로필 로그인 주소도 유지합니다.
 3. Cloudflare의 **Workers & Pages → jbgolf-connection → Settings → Variables and Secrets → Production**에서 Instagram 제품의 앱 ID를 `INSTAGRAM_APP_ID` 변수에, 해당 Instagram 앱 비밀키를 `INSTAGRAM_APP_SECRET` Secret에 설정합니다. 기존 암호화 키는 계속 사용합니다.
-4. 사이트에서 **콘텐츠 캘린더 → 계정 관리**를 열고 각 계정 옆의 **연결**을 누른 뒤 Instagram에서 해당 계정으로 승인합니다. 서버가 사용자 이름과 계정 ID를 확인하고 계정별 토큰을 암호화합니다.
+4. 등록한 운영 기기에서 **콘텐츠 캘린더 → 계정 관리**를 열고 각 계정 옆의 **연결**을 누른 뒤 같은 브라우저에서 Instagram 승인을 완료합니다. 서버가 사용자 이름과 계정 ID를 확인하고 계정별 토큰을 암호화합니다.
 5. 승인 직후 실제 게시물 첫 페이지를 조회합니다. 이후 매시 45분에 최신 게시물을 갱신하고 매번 과거 기록을 한 페이지씩 채웁니다. 최초 수집 범위가 완성될 때까지 동기화 상태가 표시됩니다. 게시 시각은 한국시간입니다. 이미지 또는 표지 URL이 제공되지 않은 콘텐츠는 원문 링크와 함께 표시합니다. [Instagram 미디어 필드](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/)
 
 일정은 운영자가 달력에 입력하는 작업 계획입니다. Instagram에 직접 예약한 콘텐츠는 발행 후 API에 나타날 때 가져옵니다. Instagram에서 앱 권한을 철회하거나 데이터 삭제를 요청하면 서명된 알림을 확인한 후 해당 계정의 달력 인증 정보와 수집 게시물을 삭제합니다. 운영자가 입력한 일정은 별도로 보관합니다.

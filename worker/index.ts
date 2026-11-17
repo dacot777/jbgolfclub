@@ -3,6 +3,8 @@ import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
+import { cleanupStaffAccess } from './staff-access'
+import { publicCalendar, PUBLIC_THUMBNAIL_PATH } from './public-calendar'
 import { collectMetaAds, readPublicMetaAds } from './meta-ads'
 import { readMetaLifetime } from './meta-lifetime'
 import { getMetaAdThumbnail } from './meta-ad-assets'
@@ -267,7 +269,9 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
-  if (path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))
+  if (path === '/api/calendar' || path.startsWith(PUBLIC_THUMBNAIL_PATH))
+    return publicCalendar(request, env, path)
+  if (path.startsWith('/api/staff/') || path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
@@ -410,7 +414,7 @@ export default {
     } else if (event.cron === '45 * * * *') {
       await syncCalendarInstagram(env)
     } else if (event.cron === '0 0 * * *') {
-      await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+      await Promise.allSettled([cleanupAnalytics(env), cleanupStaffAccess(env), maintainConnection(env)])
     }
   },
 }
