@@ -2,6 +2,7 @@ import {
   CALENDAR_LIMITS,
   calendarOrganizationForAccount,
   isCalendarAccount,
+  isCalendarScheduleKind,
   type CalendarBranch,
   type CalendarBrand,
   type CalendarSchedule,
@@ -75,7 +76,7 @@ function inputFrom(raw: Record<string, unknown>): CalendarScheduleInput & {
   const { account, brand, branch } = organizationFrom(raw)
   const { kind, date, time, title, note } = raw
   if (
-    (kind !== 'post' && kind !== 'reel') ||
+    !isCalendarScheduleKind(kind) ||
     typeof date !== 'string' ||
     !dayFormat.test(date) ||
     (time !== null && (typeof time !== 'string' || !timeFormat.test(time))) ||

@@ -770,6 +770,40 @@ test('brand schedules preserve legacy IDs, links and retries and allow Haus or e
     })
   }
   assert.equal((await (await create(plan)).json()).item.branch, 'seohyeon')
+  const allSchedules = () =>
+    f.db.prepare('SELECT * FROM calendar_schedules ORDER BY id').all()
+  const { results: beforeMigration } = await allSchedules()
+  for (const migrationName of [
+    '0017_instagram_gallery_indexes',
+    '0018_calendar_schedule_kinds',
+  ]) {
+    const migrationSql = await readFile(
+      'worker/migrations/' + migrationName + '.sql',
+      'utf8',
+    )
+    await f.db.batch(
+      migrationSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => f.db.prepare(s)),
+    )
+  }
+  assert.deepEqual((await allSchedules()).results, beforeMigration)
+  const scheduleIndexes = (
+    await f.db.prepare("PRAGMA index_list('calendar_schedules')").all()
+  ).results
+  for (const index of [
+    'calendar_schedules_day',
+    'calendar_schedule_link',
+    'calendar_link_account_latest',
+  ])
+    assert.ok(
+      scheduleIndexes.some(({ name }) => name === index),
+      index,
+    )
+  assert.equal((await create({ ...old, id: retired })).status, 409)
+  assert.equal((await (await create(plan)).json()).item.version, 3)
   assert.equal((await create({ ...plan, brand: 'academy' })).status, 409)
   assert.equal(
     (
@@ -787,6 +821,27 @@ test('brand schedules preserve legacy IDs, links and retries and allow Haus or e
     .first()
   for (const [key, val] of Object.entries(tombstone))
     if (!['id', 'version'].includes(key)) assert.equal(val, null)
+
+  const work = { ...plan, id: randomUUID(), kind: 'shoot' }
+  const shoot = await create(work)
+  assert.equal(shoot.status, 200)
+  assert.equal((await shoot.json()).item.kind, 'shoot')
+  let version = 1
+  for (const kind of ['upload_blog', 'upload_post', 'upload_reel', 'shoot']) {
+    const edited = await f.send(path + '/' + work.id, {
+      ...options,
+      method: 'PUT',
+      body: { ...work, kind, version },
+    })
+    assert.equal(edited.status, 200)
+    assert.equal((await edited.json()).item.kind, kind)
+    version++
+  }
+  assert.equal((await create({ ...work, kind: 'upload' })).status, 400)
+  assert.equal(
+    (await create({ ...old, kind: 'upload_reel', id: randomUUID() })).status,
+    400,
+  )
 })
 
 async function inquiriesFixture({ legacy = false } = {}) {

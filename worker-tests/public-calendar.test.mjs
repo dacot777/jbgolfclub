@@ -33,6 +33,7 @@ test('visitors read published media and plans without revealing editing data or 
     '0014_calendar_links',
     '0016_calendar_brands',
     '0017_instagram_gallery_indexes',
+    '0018_calendar_schedule_kinds',
   ]) {
     const sql = await readFile('worker/migrations/' + name + '.sql', 'utf8')
     await db.batch(
@@ -173,6 +174,42 @@ test('visitors read published media and plans without revealing editing data or 
     .bind(scheduleId)
     .first()
   assert.equal(preserved.note, privateData.note)
+
+  await t.test(
+    'public calendar shows planned work with its selected kind, including blog uploads, without publishing it to Instagram',
+    async () => {
+      const kinds = ['shoot', 'upload_post', 'upload_reel', 'upload_blog']
+      const addPlan = db.prepare(`INSERT INTO calendar_schedules
+      (id,scheduled_brand,kind,title,day,note,creation_fingerprint)
+      VALUES(?,'haus',?,'Scheduled work',?,?,?)`)
+      await db.batch(
+        kinds.map((kind, index) =>
+          addPlan.bind(
+            randomUUID(),
+            kind,
+            '2035-01-0' + (index + 1),
+            privateData.note,
+            privateData.fingerprint,
+          ),
+        ),
+      )
+      const publicMonth = await (
+        await request('/api/calendar?month=2035-01')
+      ).json()
+      assert.deepEqual(publicMonth.posts, [])
+      assert.deepEqual(
+        publicMonth.schedules.map(({ kind }) => kind),
+        kinds,
+      )
+      assert.ok(
+        publicMonth.schedules.every(
+          ({ note, permalink }) => note === '' && permalink === null,
+        ),
+      )
+      const gallery = await (await request('/api/calendar/posts')).json()
+      assert.ok(gallery.schedules.every(({ kind }) => !kinds.includes(kind)))
+    },
+  )
 
   await t.test(
     'latest shows nine distinct publications per account across dates, including independently registered links',

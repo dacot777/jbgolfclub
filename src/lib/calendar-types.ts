@@ -6,6 +6,23 @@ export const CALENDAR_ACCOUNTS = [
 
 export type CalendarAccount = (typeof CALENDAR_ACCOUNTS)[number]
 export type CalendarKind = 'post' | 'reel'
+// Older plans record only the media format. Keep those values distinct from
+// explicitly scheduled uploads and from the kind of a published Instagram item.
+export const CALENDAR_SCHEDULE_KINDS = [
+  'post',
+  'reel',
+  'shoot',
+  'upload_post',
+  'upload_reel',
+  'upload_blog',
+] as const
+export type CalendarScheduleKind = (typeof CALENDAR_SCHEDULE_KINDS)[number]
+
+export function isCalendarScheduleKind(
+  value: unknown,
+): value is CalendarScheduleKind {
+  return CALENDAR_SCHEDULE_KINDS.some((kind) => kind === value)
+}
 export const CALENDAR_BRANDS = {
   club: 'JB골프클럽',
   academy: 'JB아카데미',
@@ -38,7 +55,7 @@ export interface CalendarScheduleInput {
   account: CalendarAccount | null
   brand?: CalendarBrand
   branch?: CalendarBranch | null
-  kind: CalendarKind
+  kind: CalendarScheduleKind
   date: string
   time: string | null
   title: string

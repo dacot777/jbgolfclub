@@ -178,7 +178,7 @@ test('모바일 일정 달력에서 일정 브랜드와 지점을 보고 게시�
   await expect(date).toHaveAccessibleName(/콘텐츠 3개/)
 })
 
-test('schedule creates, edits to a different month, and deletes after confirmation', async ({
+test('릴스 업로드를 저장하고 촬영으로 변경하면 업로드 형식이 지워지며 다른 달로 옮길 수 있다', async ({
   page,
 }) => {
   const { records } = await mockStaff(page)
@@ -192,6 +192,27 @@ test('schedule creates, edits to a different month, and deletes after confirmati
     dialog.getByRole('button', { name: '저장', exact: true }),
   ).toBeDisabled()
   await dialog.getByRole('radio', { name: '청담', exact: true }).check()
+  const save = dialog.getByRole('button', { name: '저장', exact: true })
+  const activity = dialog.getByRole('group', {
+    name: '콘텐츠 유형',
+    exact: true,
+  })
+  const formats = dialog.getByRole('group', {
+    name: '업로드 형식',
+    exact: true,
+  })
+  await expect(activity.getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(save).toBeDisabled()
+  await expect(
+    dialog.getByRole('radio', { name: '릴스', exact: true }),
+  ).toHaveCount(0)
+  await dialog.getByRole('radio', { name: '업로드', exact: true }).check()
+  await expect(save).toBeDisabled()
+  for (const format of ['게시물', '릴스', '블로그']) {
+    await expect(
+      formats.getByRole('radio', { name: format, exact: true }),
+    ).toBeVisible()
+  }
   await dialog.getByRole('radio', { name: '릴스' }).check()
   await dialog.getByLabel('날짜').fill(day)
   await dialog.getByLabel('시간', { exact: false }).fill('17:40')
@@ -199,6 +220,8 @@ test('schedule creates, edits to a different month, and deletes after confirmati
   await dialog.getByRole('button', { name: '저장', exact: true }).click()
   const edit = page.getByRole('button', { name: '검증용 촬영 일정 수정' })
   await expect(edit).toBeVisible()
+  await expect(edit).toContainText('릴스')
+  await expect(edit).toContainText('업로드')
   expect(
     [...records.values()].find((s) => s.title === '검증용 촬영'),
   ).toMatchObject({
@@ -207,10 +230,25 @@ test('schedule creates, edits to a different month, and deletes after confirmati
     account: null,
     brand: 'club',
     branch: 'cheongdam',
-    kind: 'reel',
+    kind: 'upload_reel',
     note: '테스트 메모',
   })
+  await page.reload()
   await edit.click()
+  await expect(
+    dialog.getByRole('radio', { name: '업로드', exact: true }),
+  ).toBeChecked()
+  await expect(
+    dialog.getByRole('radio', { name: '릴스', exact: true }),
+  ).toBeChecked()
+  await dialog.getByRole('radio', { name: '촬영', exact: true }).check()
+  await expect(
+    dialog.getByRole('radio', { name: /^(게시물|릴스|블로그)$/ }),
+  ).toHaveCount(0)
+  await dialog.getByRole('radio', { name: '업로드', exact: true }).check()
+  await expect(formats.getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(save).toBeDisabled()
+  await dialog.getByRole('radio', { name: '촬영', exact: true }).check()
   await dialog.getByRole('radio', { name: /하우스 오브 제이비/ }).check()
   await expect(dialog.getByRole('radio', { name: '청담' })).toHaveCount(0)
   await dialog.getByLabel('날짜').fill('2026-12-01')
@@ -219,8 +257,14 @@ test('schedule creates, edits to a different month, and deletes after confirmati
   await expect(edit).toContainText('하우스 오브 제이비')
   expect(
     [...records.values()].find((item) => item.title === '검증용 촬영'),
-  ).toMatchObject({ account: null, brand: 'haus', branch: null })
+  ).toMatchObject({ account: null, brand: 'haus', branch: null, kind: 'shoot' })
   await edit.click()
+  await expect(
+    dialog.getByRole('radio', { name: '촬영', exact: true }),
+  ).toBeChecked()
+  await expect(
+    dialog.getByRole('radio', { name: /^(게시물|릴스|블로그)$/ }),
+  ).toHaveCount(0)
   await dialog.getByRole('button', { name: '일정 삭제' }).click()
   await dialog.getByRole('button', { name: '취소' }).click()
   await expect(dialog.getByLabel('일정 제목')).toHaveValue('검증용 촬영')
@@ -229,6 +273,52 @@ test('schedule creates, edits to a different month, and deletes after confirmati
   await expect(edit).toHaveCount(0)
   await expect(page.getByText('이달에 등록한 일정이 없습니다.')).toBeVisible()
   expect([...records.values()]).toEqual([plan])
+})
+
+test('이전 일정의 게시물·릴스 형식은 다른 내용을 수정해도 보존한다', async ({
+  page,
+}) => {
+  const { records } = await mockStaff(page)
+  records.clear()
+  for (const kind of ['post', 'reel'] as const) {
+    const id =
+      kind === 'post' ? plan.id : 'be50408a-585d-403c-853d-ae5ee250123e'
+    records.set(id, {
+      ...plan,
+      id,
+      kind,
+      account: null,
+      brand: 'academy',
+      title: '기존 ' + kind,
+    })
+  }
+  await page.goto('/#calendar')
+  for (const original of [...records.values()]) {
+    const edit = page.getByRole('button', {
+      name: original.title + ' 일정 수정',
+      exact: true,
+    })
+    await expect(edit).toContainText(
+      original.kind === 'post' ? '게시물' : '릴스',
+    )
+    await edit.click()
+    const dialog = page.getByRole('dialog')
+    const activity = dialog.getByRole('group', {
+      name: '콘텐츠 유형',
+      exact: true,
+    })
+    await expect(activity.getByRole('radio', { checked: true })).toHaveCount(0)
+    await expect(
+      dialog.getByRole('group', { name: '업로드 형식', exact: true }),
+    ).toHaveCount(0)
+    await dialog.getByLabel('메모').fill('형식 보존 확인')
+    await dialog.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(records.get(original.id)).toMatchObject({
+      kind: original.kind,
+      note: '형식 보존 확인',
+    })
+  }
 })
 
 test('확정된 일정 네 그룹을 날짜 칸과 목록에서 색과 이름으로 구분하고 기존 미지정 지점을 보존한다', async ({
@@ -296,6 +386,9 @@ test('담당자가 검색한 릴스의 게시일을 확인해 등록하고 원�
     .click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByLabel('실제 게시일')).toHaveValue('')
+  await expect(
+    dialog.getByRole('radio', { name: /^(촬영|업로드|블로그)$/ }),
+  ).toHaveCount(0)
   await expect(dialog.getByLabel('실제 게시일')).toHaveAttribute('max', day)
   await dialog.getByLabel('게시물 제목').fill('직접 확인한 릴스')
   await dialog
@@ -480,6 +573,9 @@ for (const width of [390, 1440]) {
     await expect(dialog.getByLabel('날짜')).toHaveValue(scheduledDate)
     await dialog.getByLabel('일정 제목').fill('새 아카데미 일정')
     await dialog.getByRole('radio', { name: 'JB아카데미', exact: true }).check()
+    const format = width === 390 ? '블로그' : '게시물'
+    await dialog.getByRole('radio', { name: '업로드', exact: true }).check()
+    await dialog.getByRole('radio', { name: format, exact: true }).check()
     await expect(
       dialog.getByRole('button', { name: '연결 파일 선택' }),
     ).toHaveCount(0)
@@ -502,6 +598,12 @@ for (const width of [390, 1440]) {
       dialog.getByRole('radio', { name: 'JB아카데미', exact: true }),
     ).toBeChecked()
     await expect(
+      dialog.getByRole('radio', { name: '업로드', exact: true }),
+    ).toBeChecked()
+    await expect(
+      dialog.getByRole('radio', { name: format, exact: true }),
+    ).toBeChecked()
+    await expect(
       dialog.getByRole('button', { name: '연결 파일 선택' }),
     ).toHaveCount(0)
     await dialog.getByRole('button', { name: '저장', exact: true }).click()
@@ -513,6 +615,7 @@ for (const width of [390, 1440]) {
     ).toMatchObject({
       brand: 'academy',
       date: scheduledDate,
+      kind: width === 390 ? 'upload_blog' : 'upload_post',
     })
     expect(prematureRequests).toEqual([])
     await expect(page).toHaveURL(/#calendar$/)
@@ -561,7 +664,9 @@ test('load error can be retried and shared view exposes no editing or connection
   await page.route('**/api/calendar/view?*', (route) => {
     expect(route.request().headers().authorization).toBe('Bearer ' + access)
     const month = new URL(route.request().url()).searchParams.get('month')!
-    return route.fulfill({ json: monthly(month, [plan]) })
+    return route.fulfill({
+      json: monthly(month, [{ ...plan, kind: 'upload_blog' }]),
+    })
   })
   await page.goto('/#calendar-view/' + access)
   await expect(page.getByRole('button', { name: /^2026-11-17/ })).toBeVisible()
@@ -573,6 +678,9 @@ test('load error can be retried and shared view exposes no editing or connection
   await date.click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('테스트 일정', { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByText('블로그 업로드', { exact: false }),
+  ).toBeVisible()
   await expect(
     dialog.getByRole('button', { name: /등록|수정|삭제/ }),
   ).toHaveCount(0)

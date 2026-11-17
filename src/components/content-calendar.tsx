@@ -11,13 +11,16 @@ import {
 import {
   ArrowUpRight,
   CalendarDays,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
+  FileText,
   Image as ImageIcon,
   Pencil,
   Plus,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -30,6 +33,7 @@ import {
   CALENDAR_BRANDS,
   CALENDAR_BRANCHES,
   calendarOrganizationForAccount,
+  isCalendarScheduleKind,
   type CalendarBrand,
   type CalendarBranch,
   type CalendarAccountStatus,
@@ -37,6 +41,7 @@ import {
   type CalendarPost,
   type CalendarSchedule,
   type CalendarScheduleInput,
+  type CalendarScheduleKind,
 } from '@/lib/calendar-types'
 import '@/content-calendar.css'
 
@@ -48,6 +53,9 @@ export type CalendarPublication = {
   registration?: CalendarSchedule
 }
 type Entry = CalendarPublication | { type: 'plan'; value: CalendarSchedule }
+type ScheduleDraft = Omit<CalendarScheduleInput, 'kind'> & {
+  kind: CalendarScheduleKind | 'upload' | null
+}
 type Panel =
   | { type: 'accounts' }
   | { type: 'day'; date: string }
@@ -71,7 +79,19 @@ const statusLabels: Record<CalendarAccountStatus['status'], string> = {
   connected: '연결됨',
   error: '동기화 확인 필요',
 }
-const kindLabels = { post: '게시물', reel: '릴스' }
+const kindLabels: Record<CalendarScheduleKind, string> = {
+  post: '게시물',
+  reel: '릴스',
+  shoot: '촬영',
+  upload_post: '게시물 업로드',
+  upload_reel: '릴스 업로드',
+  upload_blog: '블로그 업로드',
+}
+const uploadFormats = [
+  { kind: 'upload_post', label: '게시물', Icon: ImageIcon },
+  { kind: 'upload_reel', label: '릴스', Icon: Clapperboard },
+  { kind: 'upload_blog', label: '블로그', Icon: FileText },
+] as const
 const api = '/api/admin/calendar'
 const dateFormat = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
@@ -310,7 +330,7 @@ export default function ContentCalendar({
   const [notice, setNotice] = useState('')
   const [conflict, setConflict] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [draft, setDraft] = useState<CalendarScheduleInput | null>(null)
+  const [draft, setDraft] = useState<ScheduleDraft | null>(null)
   const writeLock = useRef(false)
   const opener = useRef<HTMLElement | null>(null)
   const defaultFocus = useRef<HTMLButtonElement>(null)
@@ -438,7 +458,7 @@ export default function ContentCalendar({
         continue
       }
       const account = value.account
-      if (!account) continue
+      if (!account || (value.kind !== 'post' && value.kind !== 'reel')) continue
       const key = postKey(account, value.permalink)
       const original = originals.get(key)
       if (original) {
@@ -456,6 +476,7 @@ export default function ContentCalendar({
           value: {
             ...value,
             account,
+            kind: value.kind,
             permalink: value.permalink,
             thumbnailUrl: cover ?? null,
             time: value.time ?? '',
@@ -502,7 +523,7 @@ export default function ContentCalendar({
   ) {
     if (readFeed && (!registrationAccess || item || published)) return
     setNeedsDevice(false)
-    const initial: CalendarScheduleInput = item
+    const initial: ScheduleDraft = item
       ? {
           account: published ? item.account : null,
           ...(!published ? scheduleOwner(item) : {}),
@@ -517,7 +538,7 @@ export default function ContentCalendar({
           account: published ? CALENDAR_ACCOUNTS[0] : null,
           ...(!published ? { branch: null } : {}),
           date,
-          kind: 'post',
+          kind: published ? 'post' : null,
           title: '',
           time: null,
           note: '',
@@ -557,6 +578,12 @@ export default function ContentCalendar({
       return
     const active = session.current
     if (!active || active.signal.aborted) return
+    if (action === 'save' && !isCalendarScheduleKind(draft.kind)) {
+      setActionError(
+        '콘텐츠 유형을 고르고 업로드 일정에는 형식을 선택해 주세요.',
+      )
+      return
+    }
     if (
       action === 'save' &&
       !panel.published &&
@@ -716,9 +743,9 @@ export default function ContentCalendar({
       if (!active.signal.aborted) setBusy(false)
     }
   }
-  function setField<K extends keyof CalendarScheduleInput>(
+  function setField<K extends keyof ScheduleDraft>(
     key: K,
-    value: CalendarScheduleInput[K],
+    value: ScheduleDraft[K],
   ) {
     if (writeLock.current) return
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
@@ -746,6 +773,9 @@ export default function ContentCalendar({
   }
   const dailyEntries =
     panel?.type === 'day' ? (perDay.get(panel.date) ?? []) : []
+  const uploadSelected =
+    draft?.kind === 'upload' ||
+    uploadFormats.some(({ kind }) => kind === draft?.kind)
   return (
     <section
       className="cc"
@@ -901,7 +931,7 @@ export default function ContentCalendar({
                           }
                           key={entryKey(entry)}
                         >
-                          <Thumbnail entry={entry} />
+                          {entry.type === 'post' && <Thumbnail entry={entry} />}
                           <span className="cc-compact-caption">
                             <BrandMark item={entry.value} compact />
                           </span>
@@ -910,6 +940,11 @@ export default function ContentCalendar({
                               {entry.value.title ||
                                 kindLabels[entry.value.kind]}
                             </strong>
+                            {entry.type === 'plan' && (
+                              <span className="cc-plan-type">
+                                {kindLabels[entry.value.kind]}
+                              </span>
+                            )}
                             <small>
                               <BrandMark item={entry.value} compact />
                             </small>
@@ -1279,24 +1314,67 @@ export default function ContentCalendar({
                         />
                       </label>
                     ) : (
-                      <fieldset className="cc-kind cc-wide">
-                        <legend>콘텐츠 유형</legend>
-                        {(['post', 'reel'] as const).map((kind) => (
-                          <label key={kind}>
+                      <>
+                        <fieldset className="cc-kind cc-wide">
+                          <legend>콘텐츠 유형</legend>
+                          <label>
                             <input
                               type="radio"
-                              name="cc-kind"
-                              value={kind}
-                              checked={draft.kind === kind}
-                              onChange={() => setField('kind', kind)}
+                              name="cc-activity"
+                              value="shoot"
+                              required={
+                                draft.kind !== 'post' && draft.kind !== 'reel'
+                              }
+                              checked={draft.kind === 'shoot'}
+                              onChange={() => setField('kind', 'shoot')}
                             />
                             <span>
-                              <EntryIcon kind={kind} />
-                              {kindLabels[kind]}
+                              <Camera size={15} aria-hidden="true" />
+                              촬영
                             </span>
                           </label>
-                        ))}
-                      </fieldset>
+                          <label>
+                            <input
+                              type="radio"
+                              name="cc-activity"
+                              value="upload"
+                              checked={uploadSelected}
+                              onChange={() => setField('kind', 'upload')}
+                            />
+                            <span>
+                              <Upload size={15} aria-hidden="true" />
+                              업로드
+                            </span>
+                          </label>
+                        </fieldset>
+                        {(draft.kind === 'post' || draft.kind === 'reel') && (
+                          <p className="cc-wide cc-legacy-format">
+                            기존 일정에 기록된 형식은 {kindLabels[draft.kind]}
+                            입니다.
+                          </p>
+                        )}
+                        {uploadSelected && (
+                          <fieldset className="cc-kind cc-wide">
+                            <legend>업로드 형식</legend>
+                            {uploadFormats.map(({ kind, label, Icon }) => (
+                              <label key={kind}>
+                                <input
+                                  type="radio"
+                                  name="cc-upload-format"
+                                  value={kind}
+                                  required
+                                  checked={draft.kind === kind}
+                                  onChange={() => setField('kind', kind)}
+                                />
+                                <span>
+                                  <Icon size={15} aria-hidden="true" />
+                                  {label}
+                                </span>
+                              </label>
+                            ))}
+                          </fieldset>
+                        )}
+                      </>
                     )}
                     <label>
                       {panel.published ? '실제 게시일' : '날짜'}
@@ -1376,6 +1454,7 @@ export default function ContentCalendar({
                         busy ||
                         conflict ||
                         !draft.title.trim() ||
+                        !isCalendarScheduleKind(draft.kind) ||
                         (!panel.published &&
                           (!draft.brand ||
                             (draft.brand === 'club' && !draft.branch))) ||
