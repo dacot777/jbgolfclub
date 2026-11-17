@@ -1,5 +1,9 @@
 # GitHub Pages 배포 기록
 
+## 2026년 11월 17일 · 인스타 게시물 모아보기
+
+기존 Cloudflare 워크스페이스에서 세 계정의 공식 Instagram 피드를 볼 수 있습니다. [운영 버전과 검증 내용](CLOUDFLARE_DEPLOYMENT.md)
+
 ## 2026년 11월 17일 · 브랜드·지점별 일정과 게시물 모아보기
 
 기존 Cloudflare 워크스페이스에 브랜드·지점별 캘린더, 독립된 인스타 게시물 모아보기, 문의 고객 구분을 배포했습니다. [운영 버전과 검증 내용](CLOUDFLARE_DEPLOYMENT.md)
