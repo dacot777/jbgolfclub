@@ -27,31 +27,29 @@
   outline: 3px solid #51815e;
   outline-offset: 3px;
 }
-.iq-stats {
+.iq-list-title,
+.iq-list-actions {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 0 0 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
 }
-.iq-stats dt {
+.iq-list-count,
+.iq-filter-result {
   font-size: 13px;
-  color: #526259;
-  font-weight: 600;
-}
-.iq-stats dd {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin: 0;
-  font-weight: 650;
-  font-size: clamp(25px, 3vw, 34px);
-  line-height: 1.15;
+  color: #50545a;
   font-variant-numeric: tabular-nums;
-  color: #214a35;
+  white-space: nowrap;
 }
-.iq-stats dd small {
-  font-size: 14px;
-  font-weight: 600;
+.iq-filter-result {
+  margin: 0 23px 10px;
+}
+.iq-list-actions {
+  flex: none;
+  gap: 6px;
+}
+.iq-list-actions button {
+  white-space: nowrap;
 }
 .iq-panel {
   background: #fff;
@@ -65,6 +63,7 @@
   justify-content: space-between;
   padding: 20px 23px 13px;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .iq-heading h2,
 .iq-dialog-header h2 {
@@ -119,6 +118,9 @@
   gap: 12px;
   padding: 2px 23px 20px;
   align-items: end;
+}
+.iq-filters[hidden] {
+  display: none;
 }
 .iq-filters label,
 .iq-fields label {
@@ -543,11 +545,13 @@
   }
 }
 @container inquiries (max-width: 510px) {
-  .iq-stats {
-    margin-bottom: 12px;
+  .iq-list-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
   }
-  .iq-stats dd {
-    font-size: 24px;
+  .iq-list-actions button {
+    padding-inline: 10px;
   }
   .iq-filters {
     grid-template-columns: 1fr 1fr;

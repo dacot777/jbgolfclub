@@ -5,6 +5,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  SlidersHorizontal,
   Trash2,
   UserRound,
   X,
@@ -170,6 +171,7 @@ export default function InquiryWorkspace({
   const [productFilter, setProductFilter] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [adFilter, setAdFilter] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const returnFocus = useRef<HTMLElement | null>(null)
   const newButton = useRef<HTMLButtonElement>(null)
   const session = useRef<AbortController | null>(null)
@@ -435,30 +437,41 @@ export default function InquiryWorkspace({
 
   return (
     <section className="iq-workspace" aria-label="문의 관리">
-      {items && (
-        <dl
-          className="iq-stats"
-          aria-label={hasFilters ? '선택한 조건의 문의 현황' : '전체 문의 현황'}
-        >
-          <dt>총 문의</dt>
-          <dd>
-            {matches.length.toLocaleString('ko-KR')}
-            <small>건</small>
-          </dd>
-        </dl>
-      )}
       <section className="iq-panel" aria-labelledby="iq-list-title">
         <header className="iq-heading">
-          <h2 id="iq-list-title">문의 목록</h2>
+          <div className="iq-list-title">
+            <h2 id="iq-list-title">문의 목록</h2>
+            {items && (
+              <span
+                className="iq-list-count"
+                role="status"
+                aria-label="전체 문의 현황"
+              >
+                총 문의 {items.length.toLocaleString('ko-KR')}건
+              </span>
+            )}
+          </div>
           {items && (
-            <button
-              ref={newButton}
-              className="iq-primary"
-              type="button"
-              onClick={(e) => openEditor(e.currentTarget)}
-            >
-              <Plus size={17} aria-hidden="true" />새 문의
-            </button>
+            <div className="iq-list-actions">
+              <button
+                type="button"
+                className="iq-secondary"
+                aria-expanded={filtersOpen}
+                aria-controls="iq-filter-fields"
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <SlidersHorizontal size={16} aria-hidden="true" />
+                필터{hasFilters && ' 적용 중'}
+              </button>
+              <button
+                ref={newButton}
+                className="iq-primary"
+                type="button"
+                onClick={(e) => openEditor(e.currentTarget)}
+              >
+                <Plus size={17} aria-hidden="true" />새 문의
+              </button>
+            </div>
           )}
         </header>
         {listError && (
@@ -474,7 +487,11 @@ export default function InquiryWorkspace({
         )}
         {items && (
           <>
-            <div className="iq-filters">
+            <div
+              id="iq-filter-fields"
+              className="iq-filters"
+              hidden={!filtersOpen}
+            >
               <label>
                 관심 상품
                 <select
@@ -514,6 +531,15 @@ export default function InquiryWorkspace({
                 </select>
               </label>
             </div>
+            {hasFilters && (
+              <p
+                className="iq-filter-result"
+                role="status"
+                aria-label="선택한 조건의 문의 현황"
+              >
+                필터 결과 {matches.length.toLocaleString('ko-KR')}건
+              </p>
+            )}
             {notice && (
               <p className="iq-notice" role="status">
                 <Check size={16} aria-hidden="true" />

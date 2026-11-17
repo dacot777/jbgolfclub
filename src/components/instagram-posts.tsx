@@ -9,19 +9,16 @@ import {
 import {
   CALENDAR_ACCOUNTS,
   type CalendarAccount,
-  type CalendarAccountStatus,
   type CalendarSchedule,
 } from '@/lib/calendar-types'
 import type { CalendarPublication } from './content-calendar'
 import '@/instagram-posts.css'
 
-type Filter = CalendarAccount | 'all'
 const accountsByName: Record<CalendarAccount, string> = {
   jbgolfacademy: '아카데미',
   jbgolfclub_official: '골프클럽 공식',
   jbgolfclub_bundang: '골프클럽 분당',
 }
-const overviewLimit = 3
 
 function AccountLinks({ account }: { account: CalendarAccount }) {
   const profile = 'https://www.instagram.com/' + account + '/'
@@ -123,59 +120,21 @@ function Publication({
   )
 }
 
-function emptyFeedMessage(
-  status: CalendarAccountStatus['status'] | undefined,
-  month: string,
-) {
-  if (status === 'error')
-    return '동기화 상태를 확인해 주세요. 인스타그램에서 원문을 볼 수 있습니다.'
-  if (status === 'syncing') return '이 계정의 게시물을 가져오고 있습니다.'
-  if (status === 'setup_required' || status === 'needs_connection')
-    return '자동 수집 연결 전입니다. 인스타그램에서 피드를 열어보세요.'
-  return month
-    ? '이 달에 수집하거나 등록한 게시물이 없습니다.'
-    : '아직 수집하거나 등록한 게시물이 없습니다.'
-}
-
 export default function InstagramPosts({
-  month,
-  onMonthChange,
-  filter,
-  onFilterChange,
   posts,
-  accounts,
-  loading,
   error,
   onRetry,
   onManage,
   onRegister,
   onEdit,
 }: {
-  month: string
-  onMonthChange: (month: string) => void
-  filter: Filter
-  onFilterChange: (filter: Filter) => void
   posts: CalendarPublication[]
-  accounts: CalendarAccountStatus[]
-  loading: boolean
   error: string
   onRetry: () => void
   onManage?: () => void
-  onRegister?: (account?: CalendarAccount) => void
+  onRegister?: () => void
   onEdit?: (item: CalendarSchedule) => void
 }) {
-  const [lastMonth, setLastMonth] = useState(() =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-      .format(new Date())
-      .slice(0, 7),
-  )
-  const [year, m] = month.split('-')
-  const selected = filter === 'all' ? CALENDAR_ACCOUNTS : [filter]
   return (
     <div className="ig-gallery">
       <header className="cc-header">
@@ -187,93 +146,18 @@ export default function InstagramPosts({
             </button>
           )}
           {onRegister && (
-            <button
-              type="button"
-              className="cc-primary"
-              onClick={() => onRegister(filter === 'all' ? undefined : filter)}
-            >
+            <button type="button" className="cc-primary" onClick={onRegister}>
               <Link2 size={16} aria-hidden="true" />
               게시물 링크 등록
             </button>
           )}
         </div>
       </header>
-      <div className="ig-toolbar">
-        <div className="cc-filter" role="group" aria-label="표시할 계정">
-          {(['all', ...CALENDAR_ACCOUNTS] as const).map((account) => (
-            <button
-              key={account}
-              type="button"
-              aria-pressed={filter === account}
-              onClick={() => onFilterChange(account)}
-            >
-              {account === 'all' ? '전체 계정' : accountsByName[account]}
-            </button>
-          ))}
-        </div>
-        <div className="ig-period">
-          <div className="cc-filter" role="group" aria-label="조회 기간">
-            <button
-              type="button"
-              aria-pressed={!month}
-              onClick={() => onMonthChange('')}
-            >
-              최신 피드
-            </button>
-            <button
-              type="button"
-              aria-pressed={Boolean(month)}
-              onClick={() => onMonthChange(month || lastMonth)}
-            >
-              월별 보기
-            </button>
-          </div>
-          {month && (
-            <label>
-              게시 월
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => {
-                  const value = e.target.value
-                  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) {
-                    setLastMonth(value)
-                    onMonthChange(value)
-                  }
-                }}
-              />
-            </label>
-          )}
-        </div>
-      </div>
-      <section
-        className="ig-feed"
-        aria-labelledby="ig-feed-heading"
-        aria-busy={Boolean(month && loading)}
-      >
-        <h2 id="ig-feed-heading">
-          {month
-            ? year + '년 ' + Number(m) + '월 게시물·릴스'
-            : '계정별 최신 피드'}
-        </h2>
-        {month && error && (
-          <p className="ig-feedback" role="alert">
-            {error}{' '}
-            <button type="button" className="cc-text" onClick={onRetry}>
-              다시 불러오기
-            </button>
-          </p>
-        )}
-        {month && loading && !error && (
-          <p className="ig-feedback" role="status">
-            게시물을 불러오는 중입니다.
-          </p>
-        )}
-        <div className="ig-feeds" data-overview={filter === 'all'}>
-          {selected.map((account) => {
+      <section className="ig-feed" aria-label="계정별 최신 피드">
+        <h2>전체 계정</h2>
+        <div className="ig-feeds">
+          {CALENDAR_ACCOUNTS.map((account) => {
             const items = posts.filter(({ value }) => value.account === account)
-            const visible =
-              filter === 'all' ? items.slice(0, overviewLimit) : items
             return (
               <section
                 key={account}
@@ -286,73 +170,34 @@ export default function InstagramPosts({
                   </h3>
                   <span>@{account}</span>
                 </header>
-                {!month && (
-                  <div className="ig-profile-preview">
-                    <iframe
-                      key={account}
-                      src={'https://www.instagram.com/' + account + '/embed/'}
-                      title={'@' + account + ' 인스타그램 피드 미리보기'}
-                      sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                <div className="ig-profile-preview">
+                  <iframe
+                    src={'https://www.instagram.com/' + account + '/embed/'}
+                    title={'@' + account + ' 인스타그램 피드 미리보기'}
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <AccountLinks account={account} />
+                {items.length > 0 && (
+                  <>
+                    <p className="ig-saved-heading">게시일이 확인된 피드</p>
+                    <ul className="ig-post-grid">
+                      {items.map((entry) => (
+                        <Publication
+                          key={entry.value.id}
+                          entry={entry}
+                          onEdit={onEdit}
+                        />
+                      ))}
+                    </ul>
+                  </>
                 )}
-                {!month && <AccountLinks account={account} />}
-                {!month && visible.length > 0 && (
-                  <p className="ig-saved-heading">게시일이 확인된 피드</p>
-                )}
-                {visible.length ? (
-                  <ul className="ig-post-grid">
-                    {visible.map((entry) => (
-                      <Publication
-                        key={entry.value.id}
-                        entry={entry}
-                        onEdit={onEdit}
-                      />
-                    ))}
-                  </ul>
-                ) : (
-                  month &&
-                  !loading &&
-                  !error && (
-                    <div className="ig-empty">
-                      <p>
-                        {emptyFeedMessage(
-                          accounts.find((row) => row.account === account)
-                            ?.status,
-                          month,
-                        )}
-                      </p>
-                      {onRegister && (
-                        <button
-                          type="button"
-                          className="cc-text"
-                          onClick={() => onRegister(account)}
-                          aria-label={accountsByName[account] + ' 게시물 등록'}
-                        >
-                          <Link2 size={14} aria-hidden="true" />
-                          게시물 등록
-                        </button>
-                      )}
-                    </div>
-                  )
-                )}
-                {items.length > visible.length && (
-                  <button
-                    className="ig-more"
-                    type="button"
-                    onClick={() => onFilterChange(account)}
-                    aria-label={accountsByName[account] + ' 게시물 더 보기'}
-                  >
-                    게시물 더 보기
-                  </button>
-                )}
-                {month && <AccountLinks account={account} />}
               </section>
             )
           })}
         </div>
-        {!month && error && (
+        {error && (
           <p className="ig-feedback" role="alert">
             등록한 게시물을 불러오지 못했습니다.{' '}
             <button type="button" className="cc-text" onClick={onRetry}>

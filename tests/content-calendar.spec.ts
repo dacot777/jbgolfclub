@@ -151,12 +151,15 @@ test('모바일 일정 달력에서 일정 브랜드와 지점을 보고 게시�
   await expect(
     calendar.getByRole('button', { name: /^2026-11-18/ }),
   ).toBeFocused()
-  await calendar
-    .getByRole('button', { name: 'JB골프클럽', exact: true })
-    .click()
-  await expect(date).toHaveAccessibleName(/콘텐츠 2개/)
-  await calendar.getByRole('button', { name: '서현', exact: true }).click()
-  await expect(date).toHaveAccessibleName(/콘텐츠 1개/)
+  await expect(calendar.getByText('전체 일정', { exact: true })).toBeVisible()
+  await expect(
+    calendar.getByRole('group', { name: /표시할 (브랜드|지점)/ }),
+  ).toHaveCount(0)
+  await expect(
+    calendar.getByRole('button', {
+      name: /^(전체 일정|JB골프클럽|JB아카데미|청담|서현)$/,
+    }),
+  ).toHaveCount(0)
   await expect(date).toContainText('서현')
   await expect(
     calendar.getByRole('heading', { name: '게시된 콘텐츠' }),
@@ -172,7 +175,7 @@ test('모바일 일정 달력에서 일정 브랜드와 지점을 보고 게시�
     calendar.getByText('이달에 등록한 일정이 없습니다.'),
   ).toBeVisible()
   await calendar.getByRole('button', { name: '오늘', exact: true }).click()
-  await expect(date).toHaveAccessibleName(/콘텐츠 1개/)
+  await expect(date).toHaveAccessibleName(/콘텐츠 3개/)
 })
 
 test('schedule creates, edits to a different month, and deletes after confirmation', async ({
@@ -278,18 +281,9 @@ test('확정된 일정 네 그룹을 날짜 칸과 목록에서 색과 이름으
     ).toContainText(org.label)
   }
   expect(colors.size).toBe(4)
-  await calendar
-    .getByRole('button', { name: 'JB골프클럽', exact: true })
-    .click()
-  await calendar
-    .getByRole('button', { name: '지점 미지정', exact: true })
-    .click()
   await expect(
     calendar.getByRole('button', { name: '기존 공식 계정 일정 일정 수정' }),
   ).toContainText('지점 미지정')
-  await expect(
-    calendar.getByRole('button', { name: '일정 2 일정 수정' }),
-  ).toHaveCount(0)
 })
 
 test('담당자가 검색한 릴스의 게시일을 확인해 등록하고 원문을 열거나 삭제한다', async ({
@@ -322,13 +316,17 @@ test('담당자가 검색한 릴스의 게시일을 확인해 등록하고 원�
   await expect(
     page.getByRole('link', { name: '직접 확인한 릴스 Instagram에서 보기' }),
   ).toHaveAttribute('href', 'https://www.instagram.com/reel/manual_fixture/')
-  await expect(page.getByRole('button', { name: '월별 보기' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
   await expect(
-    page.getByRole('button', { name: '골프클럽 분당' }),
-  ).toHaveAttribute('aria-pressed', 'true')
+    page.getByRole('region', { name: '계정별 최신 피드' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /^(최신 피드|월별 보기)$/ }),
+  ).toHaveCount(0)
+  await expect(page.getByLabel('게시 월', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('전체 계정', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '골프클럽 분당', exact: true }),
+  ).toHaveCount(0)
   expect(
     [...records.values()].find((r) => r.title === '직접 확인한 릴스'),
   ).toMatchObject({
@@ -400,8 +398,11 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
   const date = calendar.getByRole('button', { name: /^2026-11-17.*콘텐츠 3개/ })
   await expect(date.locator('img')).toHaveCount(1)
   await expect(
-    calendar.getByRole('button', { name: /일정 등록|계정 관리/ }),
-  ).toHaveCount(0)
+    calendar.getByRole('button', { name: '일정 등록', exact: true }),
+  ).toBeVisible()
+  await expect(calendar.getByRole('button', { name: '계정 관리' })).toHaveCount(
+    0,
+  )
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(
     calendar.getByRole('navigation', { name: '계정별 게시물과 릴스 바로가기' }),
@@ -413,8 +414,9 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
     dialog.getByRole('link', { name: '테스트 릴스 Instagram에서 보기' }),
   ).toBeVisible()
   await expect(
-    dialog.getByRole('button', { name: /등록|수정|삭제/ }),
-  ).toHaveCount(0)
+    dialog.getByRole('button', { name: '이 날짜에 일정 등록' }),
+  ).toBeVisible()
+  await expect(dialog.getByRole('button', { name: /수정|삭제/ })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await calendar.getByRole('button', { name: '다음 달' }).click()
   await expect(
@@ -422,6 +424,100 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
   ).toBeVisible()
   expect(privateReads).toEqual([])
 })
+
+for (const width of [390, 1440]) {
+  test(`${width}px 공개 캘린더에서 일정 등록을 시작하고 업무 기기 연결 후 선택한 날짜에 저장한다`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 })
+    const { records } = await mockStaff(page)
+    const grant = 'C'.repeat(43)
+    let connected = false
+    const prematureRequests: string[] = []
+    page.on('request', (request) => {
+      if (
+        !connected &&
+        new URL(request.url()).pathname.startsWith('/api/admin/calendar')
+      )
+        prematureRequests.push(request.url())
+    })
+    await page.route('**/api/staff/session', (route) =>
+      route.fulfill({
+        json: connected
+          ? { authenticated: true, csrfToken }
+          : { authenticated: false },
+      }),
+    )
+    await page.route('**/api/calendar?*', (route) => {
+      const month = new URL(route.request().url()).searchParams.get('month')!
+      return route.fulfill({ json: monthly(month, [plan]) })
+    })
+    await page.route('**/api/staff/activate', (route) => {
+      expect(route.request().method()).toBe('POST')
+      expect(route.request().postDataJSON().token).toBe(grant)
+      connected = true
+      return route.fulfill({ json: { authenticated: true, csrfToken } })
+    })
+
+    await page.goto('/#calendar')
+    const calendar = page.getByRole('region', { name: '콘텐츠 캘린더' })
+    const register = calendar.getByRole('button', {
+      name: '일정 등록',
+      exact: true,
+    })
+    await expect(register).toBeInViewport()
+    await expect(register).toBeEnabled()
+    let scheduledDate = day
+    if (width === 390) {
+      await register.click()
+    } else {
+      scheduledDate = '2026-12-13'
+      await calendar.getByRole('button', { name: '다음 달' }).click()
+      await calendar.getByRole('button', { name: /^2026-12-13/ }).click()
+      await page.getByRole('button', { name: '이 날짜에 일정 등록' }).click()
+    }
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByLabel('날짜')).toHaveValue(scheduledDate)
+    await dialog.getByLabel('일정 제목').fill('새 아카데미 일정')
+    await dialog.getByRole('radio', { name: 'JB아카데미', exact: true }).check()
+    await expect(
+      dialog.getByRole('button', { name: '연결 파일 선택' }),
+    ).toHaveCount(0)
+    await dialog.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(
+      dialog.getByRole('button', { name: '연결 파일 선택' }),
+    ).toBeVisible()
+    await expect(page.locator('input[type=password]')).toHaveCount(0)
+    expect([...records.values()]).toEqual([plan])
+    await dialog.getByLabel('담당자 연결 파일').setInputFiles({
+      name: '운영-기기-연결.html',
+      mimeType: 'text/html',
+      buffer: Buffer.from(
+        `<a href="https://jbgolf-connection.jbgolfacademy.workers.dev/#staff-device/${grant}">연결</a>`,
+      ),
+    })
+    await expect(dialog.getByLabel('날짜')).toHaveValue(scheduledDate)
+    await expect(dialog.getByLabel('일정 제목')).toHaveValue('새 아카데미 일정')
+    await expect(
+      dialog.getByRole('radio', { name: 'JB아카데미', exact: true }),
+    ).toBeChecked()
+    await expect(
+      dialog.getByRole('button', { name: '연결 파일 선택' }),
+    ).toHaveCount(0)
+    await dialog.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(
+      calendar.getByRole('button', { name: '새 아카데미 일정 일정 수정' }),
+    ).toBeVisible()
+    expect(
+      [...records.values()].find((item) => item.title === '새 아카데미 일정'),
+    ).toMatchObject({
+      brand: 'academy',
+      date: scheduledDate,
+    })
+    expect(prematureRequests).toEqual([])
+    await expect(page).toHaveURL(/#calendar$/)
+  })
+}
 
 test('피드를 직접 열면 광고 보고서나 광고 실적을 요청하지 않는다', async ({
   page,
@@ -468,6 +564,10 @@ test('load error can be retried and shared view exposes no editing or connection
     return route.fulfill({ json: monthly(month, [plan]) })
   })
   await page.goto('/#calendar-view/' + access)
+  await expect(page.getByRole('button', { name: /^2026-11-17/ })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '일정 등록', exact: true }),
+  ).toHaveCount(0)
   await expect(page.getByRole('button', { name: '계정 관리' })).toHaveCount(0)
   const date = page.getByRole('button', { name: /^2026-11-17.*콘텐츠 3개/ })
   await date.click()

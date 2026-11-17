@@ -233,9 +233,6 @@
 .app-shell .media-card h2 {
   letter-spacing: -0.035em;
 }
-.app-shell .iq-stats dd {
-  color: var(--foreground);
-}
 .app-shell .iq-primary,
 .iq-dialog .iq-primary {
   background: #0066cc;

@@ -41,7 +41,6 @@ import {
 import '@/content-calendar.css'
 
 type Account = (typeof CALENDAR_ACCOUNTS)[number]
-type Filter = Account | 'all'
 export type CalendarPublication = {
   type: 'post'
   value: CalendarPost
@@ -111,8 +110,6 @@ function displayMonth(month: string) {
   const [y, m] = month.split('-')
   return y + '년 ' + Number(m) + '월'
 }
-type BrandFilter = CalendarBrand | 'all'
-type BranchFilter = CalendarBranch | 'all' | 'unspecified'
 
 function scheduleOwner(item: CalendarScheduleInput | CalendarPost) {
   if ('brand' in item && item.brand)
@@ -287,12 +284,14 @@ export default function ContentCalendar({
   csrfToken,
   onUnauthorized,
   readFeed,
+  registrationAccess,
   reviewedAds = noReviewedAds,
   view = 'calendar',
 }: {
   csrfToken: string
   onUnauthorized: () => void
   readFeed?: (month: string, signal: AbortSignal) => Promise<Response>
+  registrationAccess?: ReactNode
   reviewedAds?: ReviewedAd[]
   view?: 'calendar' | 'gallery'
 }) {
@@ -300,9 +299,8 @@ export default function ContentCalendar({
   const [month, setMonth] = useState(
     view === 'gallery' ? 'latest' : today.slice(0, 7),
   )
-  const [filter, setFilter] = useState<Filter>('all')
-  const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
-  const [branchFilter, setBranchFilter] = useState<BranchFilter>('all')
+  const canStartSchedule = !readFeed || Boolean(registrationAccess)
+  const [needsDevice, setNeedsDevice] = useState(false)
   const [data, setData] = useState<CalendarMonth | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -473,35 +471,18 @@ export default function ContentCalendar({
     )
     return result
   }, [current, reviewedAds, view])
-  const calendarEntries = useMemo(
-    () =>
-      entries.filter(({ value }) => {
-        const { brand, branch } = scheduleOwner(value)
-        if (brandFilter === 'all') return true
-        if (brand !== brandFilter) return false
-        return (
-          brand !== 'club' ||
-          branchFilter === 'all' ||
-          (branch ?? 'unspecified') === branchFilter
-        )
-      }),
-    [entries, brandFilter, branchFilter],
-  )
   const perDay = useMemo(() => {
     const result = new Map<string, Entry[]>()
-    for (const entry of calendarEntries) {
+    for (const entry of entries) {
       const date = entry.value.date
       const rows = result.get(date)
       if (rows) rows.push(entry)
       else result.set(date, [entry])
     }
     return result
-  }, [calendarEntries])
-  const published = entries
-    .filter((row) => row.type === 'post')
-    .filter((row) => filter === 'all' || filter === row.value.account)
-    .reverse()
-  const plans = calendarEntries.filter((row) => row.type === 'plan')
+  }, [entries])
+  const published = entries.filter((row) => row.type === 'post').reverse()
+  const plans = entries.filter((row) => row.type === 'plan')
   const dates = view === 'calendar' ? calendarDates(month) : []
   function open(next: NonNullable<Panel>) {
     if (!panel)
@@ -518,9 +499,9 @@ export default function ContentCalendar({
     date: string,
     item?: CalendarSchedule,
     published = Boolean(item?.permalink),
-    selectedAccount?: Account,
   ) {
-    if (readFeed) return
+    if (readFeed && (!registrationAccess || item || published)) return
+    setNeedsDevice(false)
     const initial: CalendarScheduleInput = item
       ? {
           account: published ? item.account : null,
@@ -533,10 +514,7 @@ export default function ContentCalendar({
           permalink: item.permalink ?? null,
         }
       : {
-          account: published
-            ? (selectedAccount ??
-              (filter === 'all' ? CALENDAR_ACCOUNTS[0] : filter))
-            : null,
+          account: published ? CALENDAR_ACCOUNTS[0] : null,
           ...(!published ? { branch: null } : {}),
           date,
           kind: 'post',
@@ -661,8 +639,6 @@ export default function ContentCalendar({
         (action === 'delete' && result.deleted !== true)
       )
         throw new Error()
-      // A backdated registration may be older than every item in the latest feed.
-      const targetMonth = action === 'save' ? draft.date.slice(0, 7) : month
       setData((prev) =>
         prev
           ? {
@@ -678,18 +654,8 @@ export default function ContentCalendar({
             }
           : prev,
       )
-      if (action === 'save' && panel.published && draft.account)
-        setFilter(draft.account)
-      if (
-        action === 'save' &&
-        !panel.published &&
-        brandFilter !== 'all' &&
-        draft.brand
-      ) {
-        setBrandFilter(draft.brand)
-        if (branchFilter !== 'all') setBranchFilter(draft.branch ?? 'all')
-      }
-      setMonth(targetMonth)
+      if (action === 'save' && view === 'calendar')
+        setMonth(draft.date.slice(0, 7))
       setReload((n) => n + 1)
       setPanel(null)
       setDraft(null)
@@ -760,6 +726,10 @@ export default function ContentCalendar({
   }
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (readFeed) {
+      if (registrationAccess) setNeedsDevice(true)
+      return
+    }
     void write('save')
   }
   function dayKeys(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -797,28 +767,18 @@ export default function ContentCalendar({
       )}
       {view === 'gallery' ? (
         <InstagramPosts
-          month={month === 'latest' ? '' : month}
-          onMonthChange={(period) => setMonth(period || 'latest')}
-          filter={filter}
-          onFilterChange={setFilter}
           posts={published}
-          accounts={current?.accounts ?? []}
-          loading={!current && !error}
           error={error}
           onRetry={() => setReload((n) => n + 1)}
           onManage={readFeed ? undefined : () => open({ type: 'accounts' })}
-          onRegister={
-            readFeed
-              ? undefined
-              : (account) => editor('', undefined, true, account)
-          }
+          onRegister={readFeed ? undefined : () => editor('', undefined, true)}
           onEdit={readFeed ? undefined : (p) => editor(p.date, p, true)}
         />
       ) : (
         <>
           <header className="cc-header">
             <h1>콘텐츠 캘린더</h1>
-            {!readFeed && (
+            {canStartSchedule && (
               <button
                 ref={defaultFocus}
                 type="button"
@@ -858,74 +818,8 @@ export default function ContentCalendar({
                 </button>
               </div>
             </div>
+            <span className="cc-scope">전체 일정</span>
           </div>
-          <div className="cc-filter" role="group" aria-label="표시할 브랜드">
-            <button
-              type="button"
-              aria-pressed={brandFilter === 'all'}
-              onClick={() => {
-                setBrandFilter('all')
-                setBranchFilter('all')
-              }}
-            >
-              전체
-            </button>
-            {(Object.keys(CALENDAR_BRANDS) as CalendarBrand[]).map((brand) => (
-              <button
-                type="button"
-                key={brand}
-                aria-pressed={brandFilter === brand}
-                data-color={brand}
-                onClick={() => {
-                  setBrandFilter(brand)
-                  setBranchFilter('all')
-                }}
-              >
-                {CALENDAR_BRANDS[brand]}
-              </button>
-            ))}
-          </div>
-          {brandFilter === 'club' && (
-            <div
-              className="cc-filter cc-branch-filter"
-              role="group"
-              aria-label="표시할 지점"
-            >
-              <button
-                type="button"
-                aria-pressed={branchFilter === 'all'}
-                onClick={() => setBranchFilter('all')}
-              >
-                전체 지점
-              </button>
-              {(Object.keys(CALENDAR_BRANCHES) as CalendarBranch[]).map(
-                (branch) => (
-                  <button
-                    key={branch}
-                    type="button"
-                    data-color={branch}
-                    aria-pressed={branchFilter === branch}
-                    onClick={() => setBranchFilter(branch)}
-                  >
-                    {CALENDAR_BRANCHES[branch]}
-                  </button>
-                ),
-              )}
-              {entries.some(({ value }) => {
-                const owner = scheduleOwner(value)
-                return owner.brand === 'club' && !owner.branch
-              }) && (
-                <button
-                  type="button"
-                  data-color="unspecified"
-                  aria-pressed={branchFilter === 'unspecified'}
-                  onClick={() => setBranchFilter('unspecified')}
-                >
-                  지점 미지정
-                </button>
-              )}
-            </div>
-          )}
           {error && (
             <Notice>
               {error}{' '}
@@ -1221,7 +1115,7 @@ export default function ContentCalendar({
                     <p>이 날짜에 표시할 게시물이나 일정이 없습니다.</p>
                   )}
                 </div>
-                {!readFeed && (
+                {canStartSchedule && (
                   <div className="cc-dialog-foot">
                     <button
                       className="cc-primary"
@@ -1265,8 +1159,26 @@ export default function ContentCalendar({
                     </button>
                   </div>
                 </>
+              ) : needsDevice && readFeed ? (
+                <>
+                  <div className="cc-dialog-body">{registrationAccess}</div>
+                  <div className="cc-dialog-foot">
+                    <button
+                      className="cc-outline"
+                      type="button"
+                      onClick={() => setNeedsDevice(false)}
+                    >
+                      입력으로 돌아가기
+                    </button>
+                  </div>
+                </>
               ) : (
                 <form className="cc-form" onSubmit={submit}>
+                  {needsDevice && !readFeed && (
+                    <p className="cc-form-error" role="status">
+                      담당자 기기가 연결됐습니다. 입력한 일정을 저장해 주세요.
+                    </p>
+                  )}
                   <fieldset
                     className="cc-dialog-body cc-fields"
                     disabled={busy || conflict}

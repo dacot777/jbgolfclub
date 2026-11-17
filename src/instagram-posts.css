@@ -1,37 +1,5 @@
-.ig-gallery .ig-toolbar,
-.ig-period {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.ig-gallery .ig-toolbar {
-  justify-content: space-between;
-  padding-block: 20px;
-}
-.ig-period label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--cc-secondary);
-  font-size: 13px;
-}
-.ig-period input {
-  min-height: 44px;
-  max-width: 100%;
-  padding: 0 12px;
-  border: 1px solid var(--cc-border);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--cc-ink);
-  font: inherit;
-}
-.ig-period input:focus-visible {
-  outline: 3px solid var(--cc-blue);
-  outline-offset: 2px;
-}
 .ig-feed > h2 {
-  margin: 4px 0 16px;
+  margin: 20px 0 16px;
   color: var(--cc-ink);
   font-size: clamp(19px, 2.4vw, 24px);
   font-weight: 600;
@@ -62,8 +30,7 @@
 }
 .ig-account-head span,
 .ig-caption p,
-.ig-feedback,
-.ig-empty {
+.ig-feedback {
   color: var(--cc-secondary);
 }
 .ig-account-head span {
@@ -89,9 +56,7 @@
   margin-top: 4px;
 }
 .ig-originals a,
-.ig-gallery .ig-edit,
-.ig-gallery .ig-more,
-.ig-empty .cc-text {
+.ig-gallery .ig-edit {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -106,16 +71,6 @@
 }
 .ig-originals a:hover {
   text-decoration: underline;
-}
-.ig-empty {
-  padding: 16px;
-  background: var(--cc-paper);
-  border-radius: 10px;
-  font-size: 14px;
-  line-height: 1.55;
-}
-.ig-empty p {
-  margin: 0;
 }
 .ig-feedback {
   margin: 8px 0 16px;
@@ -201,24 +156,15 @@
   font-weight: 600;
   line-height: 1.4;
 }
-.ig-gallery .ig-edit,
-.ig-gallery .ig-more {
+.ig-gallery .ig-edit {
   border: 0;
   background: transparent;
 }
-.ig-gallery .ig-more {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 8px;
-  background: var(--cc-paper);
-}
 @container calendar (min-width: 820px) {
-  .ig-feeds[data-overview='true'] {
+  .ig-feeds {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .ig-feeds[data-overview='true'] .ig-post-grid {
+  .ig-feeds .ig-post-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

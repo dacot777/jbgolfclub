@@ -20,14 +20,16 @@ function readPublicMonth(month: string, signal: AbortSignal) {
   )
 }
 
-function InquiryAccess({
+function StaffDeviceAccess({
   onConnected,
   onCheck,
   checking,
+  workspace,
 }: {
   onConnected: (csrf: string) => void
-  onCheck: () => void
+  onCheck: () => Promise<string | undefined>
   checking: boolean
+  workspace: 'calendar' | 'inquiries'
 }) {
   const input = useRef<HTMLInputElement>(null)
   const choose = useRef<HTMLButtonElement>(null)
@@ -68,12 +70,7 @@ function InquiryAccess({
     }
   }
   return (
-    <Card className="max-w-2xl gap-4 px-6">
-      <h2 className="text-lg font-semibold">이 브라우저에서 문의 열기</h2>
-      <p>
-        고객 이름과 연락처는 담당자에게만 보입니다. 업무용 PC에 발급된 연결
-        파일을 한 번 선택하면 이 창에 문의 목록이 열립니다.
-      </p>
+    <>
       <div className="flex flex-wrap gap-2">
         <Button
           ref={choose}
@@ -97,7 +94,18 @@ function InquiryAccess({
         <Button
           variant="outline"
           disabled={checking || connecting}
-          onClick={onCheck}
+          onClick={async () => {
+            setNotice('')
+            const session = await onCheck()
+            if (session === '')
+              setNotice(
+                '아직 이 브라우저가 연결되지 않았습니다. 업무용 PC의 연결 파일을 선택해 주세요.',
+              )
+            else if (session === undefined)
+              setNotice(
+                '연결 상태를 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.',
+              )
+          }}
         >
           {checking ? '확인 중…' : '연결 상태 다시 확인'}
         </Button>
@@ -119,11 +127,12 @@ function InquiryAccess({
           %LOCALAPPDATA%\JBGolfWorkspace\운영-기기-연결.html
         </code>
         <p className="mt-2">
-          이미 크롬에서 연결했다면 같은 크롬 프로필의 일반 창에서 문의·상담을
+          이미 크롬에서 연결했다면 같은 크롬 프로필의 일반 창에서{' '}
+          {workspace === 'calendar' ? '콘텐츠 캘린더를' : '문의·상담을'}
           여세요. 앱 안의 브라우저와 시크릿 창은 별도로 연결됩니다.
         </p>
       </details>
-    </Card>
+    </>
   )
 }
 
@@ -134,21 +143,36 @@ export default function StaffWorkspace({
   page: 'calendar' | 'instagram-posts' | 'inquiries'
   reviewedAds?: ReviewedAd[]
 }) {
-  const [csrf, setCsrf] = useState('')
+  const [{ csrf, revision }, setSession] = useState({ csrf: '', revision: 0 })
+  const updateSession = useCallback((next: string) => {
+    setSession((previous) =>
+      previous.csrf === next
+        ? previous
+        : {
+            csrf: next,
+            // Pairing preserves a public draft. Losing or replacing a staff session
+            // unmounts the previous calendar along with all of its private state.
+            revision: previous.revision + (previous.csrf ? 1 : 0),
+          },
+    )
+  }, [])
   const [initialCheck, setInitialCheck] = useState(true)
   const [checking, setChecking] = useState(false)
   const pending = useRef<AbortController | null>(null)
   const [error, setError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
   const [copyResult, setCopyResult] = useState('')
-  const changeSession = useCallback((csrf: string) => {
-    pending.current?.abort()
-    pending.current = null
-    setChecking(false)
-    setInitialCheck(false)
-    setError('')
-    setCsrf(csrf)
-  }, [])
+  const changeSession = useCallback(
+    (csrf: string) => {
+      pending.current?.abort()
+      pending.current = null
+      setChecking(false)
+      setInitialCheck(false)
+      setError('')
+      updateSession(csrf)
+    },
+    [updateSession],
+  )
   const expired = useCallback(() => changeSession(''), [changeSession])
   const check = useCallback(async () => {
     if (pending.current) return
@@ -158,7 +182,10 @@ export default function StaffWorkspace({
     setError('')
     try {
       const next = await readStaffSession(controller.signal)
-      if (!controller.signal.aborted) setCsrf(next)
+      if (!controller.signal.aborted) {
+        updateSession(next)
+        return next
+      }
     } catch {
       if (!controller.signal.aborted)
         setError('이 기기의 담당자 연결 상태를 확인하지 못했습니다.')
@@ -169,12 +196,17 @@ export default function StaffWorkspace({
         setInitialCheck(false)
       }
     }
-  }, [])
+  }, [updateSession])
+  // Workspace navigation is an in-page link: it does not fire a window focus
+  // event. Check again on entry so a newly paired browser opens its list directly.
+  useEffect(() => {
+    setInitialCheck(true)
+    void check()
+  }, [check, page])
   useEffect(() => {
     const onReturn = () => {
       if (document.visibilityState === 'visible') void check()
     }
-    void check()
     window.addEventListener('focus', onReturn)
     document.addEventListener('visibilitychange', onReturn)
     return () => {
@@ -249,12 +281,31 @@ export default function StaffWorkspace({
               {disconnectButton}
             </div>
             <ContentCalendar
-              key={page + (csrf ? '-staff' : '-public')}
+              key={page + '-' + revision}
               view={page === 'calendar' ? 'calendar' : 'gallery'}
               reviewedAds={reviewedAds}
               csrfToken={csrf}
               onUnauthorized={expired}
               readFeed={csrf ? undefined : readPublicMonth}
+              registrationAccess={
+                page === 'calendar' && !csrf ? (
+                  <section aria-label="담당 기기 연결" className="grid gap-3">
+                    <h3 className="font-semibold">
+                      일정을 저장하려면 이 브라우저를 연결해 주세요
+                    </h3>
+                    <p>
+                      업무용 PC의 연결 파일을 한 번 선택하면 지금 작성한 일정을
+                      이어서 저장할 수 있어요.
+                    </p>
+                    <StaffDeviceAccess
+                      workspace="calendar"
+                      onConnected={changeSession}
+                      onCheck={check}
+                      checking={checking}
+                    />
+                  </section>
+                ) : undefined
+              }
             />
           </>
         ) : (
@@ -279,11 +330,21 @@ export default function StaffWorkspace({
                 이 브라우저의 담당자 연결을 확인하고 있습니다.
               </p>
             ) : (
-              <InquiryAccess
-                onConnected={changeSession}
-                onCheck={check}
-                checking={checking}
-              />
+              <Card className="max-w-2xl gap-4 px-6">
+                <h2 className="text-lg font-semibold">
+                  이 브라우저에서 문의 열기
+                </h2>
+                <p>
+                  고객 이름과 연락처는 담당자에게만 보입니다. 업무용 PC에 발급된
+                  연결 파일을 한 번 선택하면 이 창에 문의 목록이 열립니다.
+                </p>
+                <StaffDeviceAccess
+                  workspace="inquiries"
+                  onConnected={changeSession}
+                  onCheck={check}
+                  checking={checking}
+                />
+              </Card>
             )}
           </div>
         )}

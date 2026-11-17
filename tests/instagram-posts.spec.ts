@@ -57,46 +57,39 @@ async function openGallery(page: Page, width: number, unavailable = false) {
       },
     }),
   )
-  await page.route(/\/api\/calendar(?:\/posts|\?month=)/, (route) => {
+  await page.route('**/api/calendar/posts', (route) => {
     if (unavailable) return route.fulfill({ status: 503, json: {} })
-    const selected =
-      new URL(route.request().url()).searchParams.get('month') || 'latest'
     const data: CalendarMonth = {
-      month: selected,
+      month: 'latest',
       accounts: CALENDAR_ACCOUNTS.map((account) => ({
         account,
         status: 'needs_connection',
         lastSyncedAt: null,
       })),
-      posts: [olderPost, reel].filter(
-        (post) => selected === 'latest' || post.date.startsWith(selected),
-      ),
-      schedules:
-        selected === 'latest' || selected === month
-          ? [
-              {
-                id: 'fixture-manual',
-                version: 1,
-                account: 'jbgolfclub_official',
-                kind: 'post',
-                date: month + '-16',
-                time: null,
-                title: '직접 등록한 연습 사진',
-                note: '',
-                permalink: 'https://www.instagram.com/p/fixtureGalleryPhoto/',
-              },
-              {
-                id: 'fixture-plan',
-                version: 1,
-                account: 'jbgolfacademy',
-                kind: 'post',
-                date: month + '-19',
-                time: null,
-                title: '아직 촬영 전인 일정',
-                note: '',
-              },
-            ]
-          : [],
+      posts: [olderPost, reel],
+      schedules: [
+        {
+          id: 'fixture-manual',
+          version: 1,
+          account: 'jbgolfclub_official',
+          kind: 'post',
+          date: month + '-16',
+          time: null,
+          title: '직접 등록한 연습 사진',
+          note: '',
+          permalink: 'https://www.instagram.com/p/fixtureGalleryPhoto/',
+        },
+        {
+          id: 'fixture-plan',
+          version: 1,
+          account: 'jbgolfacademy',
+          kind: 'post',
+          date: month + '-19',
+          time: null,
+          title: '아직 촬영 전인 일정',
+          note: '',
+        },
+      ],
     }
     return route.fulfill({ json: data })
   })
@@ -105,12 +98,19 @@ async function openGallery(page: Page, width: number, unavailable = false) {
 
 for (const width of [390, 1440]) {
   test(
-    '세 계정의 공식 피드를 한눈에 보고 월별 게시 기록으로 이동한다 · ' +
-      width +
-      'px',
+    '계정·기간 선택 없이 세 계정의 공식 피드를 함께 본다 · ' + width + 'px',
     async ({ page }) => {
       await openGallery(page, width)
       const latest = page.getByRole('region', { name: '계정별 최신 피드' })
+      await expect(page.getByText('전체 계정', { exact: true })).toBeVisible()
+      await expect(
+        page.getByRole('group', { name: '표시할 계정' }),
+      ).toHaveCount(0)
+      await expect(
+        page.getByRole('button', {
+          name: /^(전체 계정|아카데미|골프클럽 공식|골프클럽 분당)$/,
+        }),
+      ).toHaveCount(0)
       const columns = latest.locator('.ig-account')
       await expect(columns).toHaveCount(3)
       for (const [index, account] of CALENDAR_ACCOUNTS.entries()) {
@@ -142,49 +142,22 @@ for (const width of [390, 1440]) {
         olderPost.title,
       )
       await expect(
-        columns
-          .nth(1)
-          .getByRole('link', {
-            name: '직접 등록한 연습 사진 Instagram에서 보기',
-          }),
+        columns.nth(1).getByRole('link', {
+          name: '직접 등록한 연습 사진 Instagram에서 보기',
+        }),
       ).toContainText('미리보기 없음')
       await expect(latest.getByText('아직 촬영 전인 일정')).toHaveCount(0)
       await expect(page.getByText('보고서 전용 샘플')).toHaveCount(0)
       await expect(
         latest.getByText('자동 수집 연결 전', { exact: false }),
       ).toHaveCount(0)
-      await page
-        .getByRole('button', { name: '골프클럽 공식', exact: true })
-        .click()
-      await expect(latest.locator('iframe')).toHaveCount(1)
-      await expect(latest.locator('iframe')).toHaveAttribute(
-        'src',
-        'https://www.instagram.com/jbgolfclub_official/embed/',
-      )
-      await page.getByRole('button', { name: '월별 보기', exact: true }).click()
-      const archive = page.getByRole('region', {
-        name: '2026년 11월 게시물·릴스',
-      })
-      await expect(archive.locator('iframe')).toHaveCount(0)
-      await expect(archive.getByRole('listitem')).toHaveCount(1)
       await expect(
-        archive.getByRole('link', {
-          name: '직접 등록한 연습 사진 Instagram에서 보기',
-        }),
-      ).toHaveAttribute(
-        'href',
-        'https://www.instagram.com/p/fixtureGalleryPhoto/',
-      )
-      await page.getByLabel('게시 월').fill('2026-10')
-      const october = page.getByRole('region', {
-        name: '2026년 10월 게시물·릴스',
-      })
-      await expect(october).toContainText('자동 수집 연결 전')
-      await page.getByRole('button', { name: '전체 계정', exact: true }).click()
-      await expect(october.getByRole('listitem')).toHaveCount(1)
-      await expect(october.getByRole('listitem')).toContainText(olderPost.title)
-      await page.getByRole('button', { name: '최신 피드', exact: true }).click()
-      await expect(latest.locator('iframe')).toHaveCount(3)
+        page.getByRole('button', { name: /^(월별 보기|최신 피드)$/ }),
+      ).toHaveCount(0)
+      await expect(page.getByLabel('게시 월')).toHaveCount(0)
+      await expect(
+        latest.getByRole('link', { name: reel.title + ' Instagram에서 보기' }),
+      ).toHaveAttribute('href', reel.permalink)
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth,

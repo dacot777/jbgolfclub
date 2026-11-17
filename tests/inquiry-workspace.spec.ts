@@ -202,6 +202,50 @@ test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 �
   ).not.toContain(deviceGrant)
 })
 
+test('캘린더에서 문의·상담으로 이동하면 다른 탭에서 연결한 업무 기기의 문의 목록이 바로 열린다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, false)
+  api.records.set('test-inquiry', {
+    id: 'test-inquiry',
+    version: 1,
+    firstDate: null,
+    product: 'lesson',
+    branch: 'cheongdam',
+    channel: 'phone',
+    source: 'unknown',
+    adId: null,
+    stage: 'received',
+    assignee: 'unassigned',
+    name: '검증용 레슨 문의',
+    contact: '',
+    note: '',
+  })
+  await page.goto('/#inquiries')
+  await expect(
+    page.getByRole('button', { name: '연결 파일 선택' }),
+  ).toBeVisible()
+  expect(api.reads()).toBe(0)
+  await page.getByRole('link', { name: '콘텐츠 캘린더', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: '콘텐츠 캘린더' }),
+  ).toBeVisible()
+  // Same document remains focused across both navigations.
+  api.setSignedIn(true)
+  await page.getByRole('link', { name: '문의·상담', exact: true }).click()
+  await expect(
+    page.getByRole('row', { name: /검증용 레슨 문의/ }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '필터', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByLabel('상품 필터')).toBeHidden()
+  await expectTotal(page.getByLabel('전체 문의 현황'), 1)
+  await expect(
+    page.getByRole('button', { name: '연결 파일 선택' }),
+  ).toHaveCount(0)
+})
+
 test('다른 탭에서 담당자 연결을 마치거나 해제한 뒤 기존 문의 화면에서 확인된다', async ({
   page,
 }) => {
@@ -363,8 +407,13 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('row').filter({ hasText: camp.name }),
   ).toContainText('청담')
   const adFilter = page.getByLabel('광고 필터', { exact: true })
+  await expect(adFilter).toBeHidden()
+  await page.getByRole('button', { name: '필터', exact: true }).click()
   await adFilter.selectOption(demoAd.id)
-  await expectTotal(page.getByLabel('선택한 조건의 문의 현황'), 1)
+  await expectTotal(page.getByLabel('전체 문의 현황'), 2)
+  await expect(page.getByLabel('선택한 조건의 문의 현황')).toHaveText(
+    '필터 결과 1건',
+  )
   await expect(
     page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
   ).toHaveCount(0)
@@ -379,7 +428,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
     page.getByRole('button', { name: lesson.name + ' 수정', exact: true }),
   ).toHaveCount(0)
   const filteredSummary = page.getByLabel('선택한 조건의 문의 현황')
-  await expectTotal(filteredSummary, 1)
+  await expect(filteredSummary).toHaveText('필터 결과 1건')
   await page
     .getByLabel('담당자 필터', { exact: true })
     .selectOption('unassigned')
@@ -390,7 +439,9 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   await expect(
     page.getByRole('button', { name: camp.name + ' 수정', exact: true }),
   ).toHaveCount(0)
-  await expectTotal(filteredSummary, 1)
+  await page.getByRole('button', { name: '필터 적용 중' }).click()
+  await expect(adFilter).toBeHidden()
+  await expect(filteredSummary).toHaveText('필터 결과 1건')
   await page
     .getByRole('button', { name: lesson.name + ' 수정', exact: true })
     .click()

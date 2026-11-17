@@ -74,7 +74,6 @@
 .cc-dialog .cc-outline,
 .cc-dialog .cc-delete,
 .cc-switch-month button,
-.cc .cc-filter button,
 .cc-dialog .cc-close {
   display: inline-flex;
   align-items: center;
@@ -110,13 +109,7 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.cc
-  :is(
-    .cc-primary,
-    .cc-manage,
-    .cc-switch-month button,
-    .cc-filter button
-  ):active,
+.cc :is(.cc-primary, .cc-manage, .cc-switch-month button):active,
 .cc-dialog :is(.cc-primary, .cc-outline, .cc-delete, .cc-close):active {
   transform: scale(0.97);
 }
@@ -124,6 +117,12 @@
   justify-content: space-between;
   flex-wrap: wrap;
   padding: 26px 0 15px;
+}
+.cc-scope {
+  color: var(--cc-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .cc-month {
   flex-wrap: wrap;
@@ -147,24 +146,6 @@
 }
 .cc-switch-month button:hover {
   background: var(--cc-paper);
-}
-.cc-filter {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.cc .cc-filter button {
-  min-height: 44px;
-  padding: 8px 15px;
-  background: transparent;
-  border: 1px solid var(--cc-border);
-  font-weight: 400;
-}
-.cc-filter button[aria-pressed='true'] {
-  background: var(--cc-ink);
-  color: white;
-  border-color: var(--cc-ink);
 }
 .cc-account-links {
   display: grid;
@@ -795,13 +776,6 @@
     font-size: 13px;
     gap: 4px;
   }
-  .cc .cc-filter {
-    gap: 4px;
-  }
-  .cc .cc-filter button {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
   .cc-sync-note,
   .cc-loading,
   .cc-error {
@@ -920,10 +894,6 @@
   white-space: nowrap;
   vertical-align: middle;
 }
-.cc-branch-filter {
-  margin-top: 8px;
-}
-.cc .cc-filter button[data-color]::before,
 .cc-brand-choices label span::before {
   display: inline-block;
   content: '';
@@ -933,7 +903,6 @@
   border-radius: 50%;
   background: var(--brand-ink);
 }
-.cc .cc-filter button[data-color][aria-pressed='true'],
 .cc-dialog .cc-brand-choices input:checked + span {
   color: var(--brand-ink);
   background: var(--brand-bg);
