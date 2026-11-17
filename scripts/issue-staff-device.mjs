@@ -12,13 +12,11 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import qrcode from 'qrcode-generator'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const site = 'https://jbgolf-connection.jbgolfacademy.workers.dev'
 const launcherName = '운영-기기-연결.html'
-const phoneLauncherName = '휴대폰-문의-연결.html'
-const hour = 60 * 60 * 1000
+const day = 24 * 60 * 60 * 1000
 
 function checkOutsideRepo(directory) {
   const relative = path.relative(root, directory)
@@ -61,8 +59,17 @@ async function preparePrivateDirectory(directory) {
     throw new Error('운영 기기 파일 폴더의 비공개 권한을 설정할 수 없습니다.')
 }
 
-function desktopLauncher(token) {
-  return `<!doctype html>
+export async function issueStaffDevice(directory, registerDigest) {
+  await preparePrivateDirectory(directory)
+  const token = randomBytes(32).toString('base64url')
+  const digest = createHash('sha256').update(token).digest('base64url')
+  const expiresAt = Date.now() + day
+  const launcher = path.join(directory, launcherName)
+  const pending = path.join(
+    directory,
+    '.staff-' + randomBytes(12).toString('hex') + '.tmp',
+  )
+  const html = `<!doctype html>
 <html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">
@@ -72,60 +79,6 @@ function desktopLauncher(token) {
 <p><a href="${site}/#staff-device/${token}" rel="noreferrer">이 브라우저를 운영 기기로 연결</a></p>
 <p>연결 링크는 발급 후 24시간 동안 한 번 사용할 수 있습니다.</p></main></html>
 `
-}
-
-function phoneLauncher(token, expiresAt) {
-  const qr = qrcode(0, 'M')
-  qr.addData(`${site}/#staff-device/${token}/inquiries`, 'Byte')
-  qr.make()
-  const svg = qr.createSvgTag({
-    scalable: true,
-    title: '휴대폰 문의 목록 연결 QR 코드',
-  })
-  const deadline = new Intl.DateTimeFormat('ko-KR', {
-    dateStyle: 'long',
-    timeStyle: 'medium',
-    timeZone: 'Asia/Seoul',
-  }).format(expiresAt)
-  return `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-<title>휴대폰에서 문의 목록 열기 · JB GOLF</title>
-<style>
-  body { margin: 0; background: #f5f5f7; color: #1d1d1f; font: 16px/1.65 system-ui, sans-serif; }
-  main { max-width: 30rem; margin: 5vh auto; padding: 24px; text-align: center; }
-  h1 { font-size: clamp(1.6rem,5vw,2.2rem); line-height: 1.25; }
-  svg { display: block; width: min(100%, 336px); margin: 24px auto; shape-rendering: crispEdges; }
-  small { color: #515157; }
-</style></head><body><main>
-<h1>휴대폰에서 문의 목록 열기</h1>
-<p>휴대폰 기본 카메라로 QR 코드를 스캔하고, 평소 사용하는 Chrome 또는 Safari의 일반 탭에서 여세요.</p>
-${svg}
-<p>이후 같은 휴대폰 브라우저에서 문의·상담을 열면 목록이 바로 표시됩니다.</p>
-<small>한 번만 사용 가능 · ${deadline} (한국시간)까지</small>
-</main></body></html>
-`
-}
-
-export async function issueStaffDevice(
-  directory,
-  registerDigest,
-  { phone = false } = {},
-) {
-  await preparePrivateDirectory(directory)
-  const token = randomBytes(32).toString('base64url')
-  const digest = createHash('sha256').update(token).digest('base64url')
-  const expiresAt = Date.now() + (phone ? hour : 24 * hour)
-  const launcher = path.join(
-    directory,
-    phone ? phoneLauncherName : launcherName,
-  )
-  const pending = path.join(
-    directory,
-    '.staff-' + randomBytes(12).toString('hex') + '.tmp',
-  )
-  const html = phone ? phoneLauncher(token, expiresAt) : desktopLauncher(token)
   try {
     await writeFile(pending, html, { flag: 'wx', mode: 0o600 })
     await registerDigest(digest, expiresAt)
@@ -173,12 +126,8 @@ if (
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
   try {
-    const args = process.argv.slice(2)
-    const phone = args[1] === '--phone'
-    if (args[0] !== '--remote' || args.length !== (phone ? 2 : 1))
-      throw new Error(
-        '사용법: node scripts/issue-staff-device.mjs --remote [--phone]',
-      )
+    if (process.argv.length !== 3 || process.argv[2] !== '--remote')
+      throw new Error('사용법: node scripts/issue-staff-device.mjs --remote')
     const base =
       process.platform === 'win32'
         ? process.env.LOCALAPPDATA
@@ -188,7 +137,6 @@ if (
     const launcher = await issueStaffDevice(
       path.join(base, 'JBGolfWorkspace'),
       registerRemote,
-      { phone },
     )
     console.log(launcher)
   } catch (error) {

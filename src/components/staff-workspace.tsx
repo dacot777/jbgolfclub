@@ -334,15 +334,10 @@ export default function StaffWorkspace({
                 <h2 className="text-lg font-semibold">
                   이 브라우저에서 문의 열기
                 </h2>
-                <section className="grid gap-1">
-                  <h3 className="font-semibold">휴대폰에서 연결</h3>
-                  <p>
-                    휴대폰 기본 카메라로 업무용 PC에 표시된 일회용 QR 코드를
-                    스캔하고 Safari 또는 Chrome의 일반 창에서 여세요. 다음부터는
-                    같은 브라우저에서 문의 목록이 바로 열립니다.
-                  </p>
-                </section>
-                <p>PC에서는 이 브라우저에서 연결 파일을 한 번 선택해 주세요.</p>
+                <p>
+                  고객 이름과 연락처는 담당자에게만 보입니다. 업무용 PC에 발급된
+                  연결 파일을 한 번 선택하면 이 창에 문의 목록이 열립니다.
+                </p>
                 <StaffDeviceAccess
                   workspace="inquiries"
                   onConnected={changeSession}
