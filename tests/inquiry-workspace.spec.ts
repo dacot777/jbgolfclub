@@ -165,6 +165,42 @@ test('공개 방문자는 비밀번호 입력 없이 담당자 기기 안내를 
   expect(api.analyticsEvents()).toBe(0)
 })
 
+test('휴대폰은 QR 연결 후 문의 목록을 바로 열고 새로고침해도 같은 목록에 머문다', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const api = await mockWorkspace(page, false)
+  await page.goto('/#inquiries')
+  await expect(
+    page.getByRole('heading', { name: '휴대폰에서 연결' }),
+  ).toBeVisible()
+  expect(api.reads()).toBe(0)
+  await page.goto('/#staff-device/' + deviceGrant + '/inquiries')
+  await expect(page).toHaveURL(/\/#inquiries$/)
+  const list = page.getByRole('heading', { name: '문의 목록', exact: true })
+  await expect(list).toBeVisible()
+  await page.reload()
+  await expect(list).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '연결 파일 선택' }),
+  ).toHaveCount(0)
+  expect(api.grantUses()).toBe(1)
+  expect(api.analyticsEvents()).toBe(0)
+})
+
+test('기기 연결 주소의 임의 이동 경로는 활성화하거나 따라가지 않는다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, false)
+  await page.goto('/#staff-device/' + deviceGrant + '/https://example.invalid')
+  await expect(page).toHaveURL(/\/#calendar$/)
+  await expect(page.getByRole('alert')).toContainText(
+    '이 기기를 연결하지 못했습니다.',
+  )
+  expect(api.grantUses()).toBe(0)
+  expect(api.reads()).toBe(0)
+})
+
 test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 같은 탭에서 문의를 연다', async ({
   page,
 }) => {

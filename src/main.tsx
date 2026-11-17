@@ -10,24 +10,32 @@ import { ConnectionLegalPage } from './components/connection-legal-page'
 import './apple-workspace.css'
 
 const CalendarViewer = React.lazy(() => import('./components/calendar-viewer'))
-const devicePrefix = '#staff-device/'
-function readRoute() {
+type DeviceActivation = {
+  token: string
+  destination: '#calendar' | '#inquiries'
+}
+
+function readRoute(): string | DeviceActivation {
   const hash = window.location.hash
-  if (__INSTAGRAM_BACKEND__ && hash.startsWith(devicePrefix))
+  if (__INSTAGRAM_BACKEND__ && hash.startsWith('#staff-device/')) {
+    const match = /^#staff-device\/([\w-]{43})(\/inquiries)?$/.exec(hash)
+    const destination = match?.[2] ? '#inquiries' : '#calendar'
     window.history.replaceState(
       window.history.state,
       '',
-      window.location.pathname + window.location.search + '#calendar',
+      window.location.pathname + window.location.search + destination,
     )
+    return { token: match?.[1] ?? '', destination }
+  }
   return hash
 }
 const initialRoute = readRoute()
 
 function StaffActivation({
   token,
+  destination,
   finish,
-}: {
-  token: string
+}: DeviceActivation & {
   finish: () => void
 }) {
   const request = React.useRef<Promise<string> | null>(null)
@@ -54,7 +62,9 @@ function StaffActivation({
             새 연결 링크를 열어 주세요.
           </p>
           <button type="button" onClick={finish}>
-            콘텐츠 캘린더 열기
+            {destination === '#inquiries'
+              ? '문의·상담 열기'
+              : '콘텐츠 캘린더 열기'}
           </button>
         </>
       ) : (
@@ -65,8 +75,9 @@ function StaffActivation({
 }
 
 function Workspace() {
-  const [hash, setHash] = React.useState(initialRoute)
-  const finish = React.useCallback(() => setHash('#calendar'), [])
+  const [route, setRoute] = React.useState(initialRoute)
+  const hash = typeof route === 'string' ? route : route.destination
+  const finish = React.useCallback(() => setRoute(hash), [hash])
   const calendar =
     __INSTAGRAM_BACKEND__ &&
     (hash === '#calendar' || hash.startsWith('#calendar-view/'))
@@ -81,18 +92,12 @@ function Workspace() {
             : 'JB GOLF ACADEMY · 광고 성과'
   }, [calendar, hash])
   React.useEffect(() => {
-    const changed = () => setHash(readRoute())
+    const changed = () => setRoute(readRoute())
     window.addEventListener('hashchange', changed)
     return () => window.removeEventListener('hashchange', changed)
   }, [])
-  if (__INSTAGRAM_BACKEND__ && hash.startsWith(devicePrefix))
-    return (
-      <StaffActivation
-        key={hash}
-        token={hash.slice(devicePrefix.length)}
-        finish={finish}
-      />
-    )
+  if (typeof route !== 'string')
+    return <StaffActivation key={route.token} {...route} finish={finish} />
   if (__INSTAGRAM_BACKEND__ && hash.startsWith('#calendar-view/'))
     return (
       <React.Suspense fallback={<p role="status">캘린더를 여는 중입니다.</p>}>
