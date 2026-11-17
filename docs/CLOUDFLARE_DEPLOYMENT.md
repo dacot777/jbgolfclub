@@ -1,5 +1,13 @@
 # Cloudflare 무료 연결 서버 배포 기록
 
+## 2026년 11월 17일 · 광고 상태와 비밀번호 없는 캘린더
+
+Workers Free에서 소스 `79cd939`를 기존 Worker에 배포했습니다. 운영 버전은 `1e3a1dd6-818d-478f-a9ce-1e9997b374d2`입니다. 기존 D1에 운영 기기 등록용 마이그레이션 0013을 적용했습니다. 기존 바인딩과 예약 수집 일정을 확인했습니다.
+
+- 1440px와 390px 브라우저에서 전체 누적의 두 광고 카드에 현재 게재 상태가 제목 위에 표시되고, 중단 기록은 해당 주에서 확인되는 것을 검증했습니다. [운영 광고 상세](https://jbgolf-connection.jbgolfacademy.workers.dev/#campaigns)
+- 일반 브라우저에서 공개 달력과 세 계정 필터, 문의 개인정보 보호, 방문 기록의 비밀번호 입력을 확인했습니다. 별도 일회용 운영 기기로 일정 편집 화면을 열고 연결을 해제했으며, 이 기기의 방문 통계 요청은 401을 반환했습니다. [운영 캘린더](https://jbgolf-connection.jbgolfacademy.workers.dev/#calendar)
+- 정적 빌드와 Worker 빌드가 성공했습니다. 브라우저 테스트 71개와 Worker·D1 및 운영 기기 발급 테스트 66개가 통과했습니다.
+
 ## 2026년 11월 17일 · 콘텐츠 캘린더
 
 사용자가 제공한 **Workers plans** 화면에서 **Free ($0) · Current plan**을 확인한 뒤, 소스 `32fd14b`를 기존 Worker에 배포했습니다. 운영 버전은 `755daf0d-d6dc-4796-ab1a-e945f07e0af1`입니다. [운영 콘텐츠 캘린더](https://jbgolf-connection.jbgolfacademy.workers.dev/#calendar)
