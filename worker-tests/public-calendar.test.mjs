@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { build } from 'esbuild'
 import { Miniflare, createFetchMock } from 'miniflare'
 
-test('visitors read published media and plans without revealing editing data or gaining write access', async (t) => {
+test('visitors read published media and plans without revealing private notes or account data', async (t) => {
   const origin = 'https://public-calendar.test'
   const bundle = await build({
     entryPoints: ['worker/index.ts'],
@@ -167,7 +167,7 @@ test('visitors read published media and plans without revealing editing data or 
   }
   assert.equal(
     (await request('/api/calendar/schedules/' + scheduleId, 'DELETE')).status,
-    404,
+    403,
   )
   const preserved = await db
     .prepare('SELECT note FROM calendar_schedules WHERE id=?')

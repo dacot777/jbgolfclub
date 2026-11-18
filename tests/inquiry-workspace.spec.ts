@@ -48,13 +48,46 @@ async function expectVisibleTableHead(table: Locator) {
   ).toBe(true)
 }
 
-async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
+function publicInquiry(item: Inquiry): Inquiry {
+  const {
+    id,
+    version,
+    firstDate,
+    product,
+    branch,
+    channel,
+    source,
+    assignee,
+    stage,
+  } = item
+  return {
+    id,
+    version,
+    firstDate,
+    product,
+    branch,
+    channel,
+    source,
+    assignee,
+    stage,
+    name: '',
+    contact: '',
+    note: '',
+    customerType: null,
+    adId: null,
+  }
+}
+
+async function mockWorkspace(
+  page: Page,
+  initiallySignedIn: boolean,
+  records = new Map<string, Inquiry>(),
+) {
   let signedIn = initiallySignedIn
   let grantUses = 0
   let reads = 0
   let analyticsEvents = 0
   const deletionRequests: string[] = []
-  const records = new Map<string, Inquiry>()
   await page.route('**/api/inquiries/list', (route) => {
     expect(route.request().method()).toBe('GET')
     const rows = [...records.values()]
@@ -71,6 +104,52 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
         }),
       )
     return route.fulfill({ json: { rows } })
+  })
+  await page.route(/\/api\/inquiries(?:\/[\da-f-]+)?$/, async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET')
+      return route.fulfill({
+        json: { items: [...records.values()].reverse().map(publicInquiry) },
+      })
+    expect(request.headers()['x-csrf-token']).toBeUndefined()
+    const payload = request.postDataJSON()
+    expect(payload).not.toHaveProperty('nextAction')
+    if (request.method() === 'POST') {
+      const { id, ...input } = payload
+      expect(id).toMatch(/^[\da-f-]{36}$/i)
+      const item = { ...input, id, version: 1 } as Inquiry
+      records.set(id, item)
+      return route.fulfill({ status: 201, json: { item: publicInquiry(item) } })
+    }
+    const id = new URL(request.url()).pathname.split('/').pop()!
+    const old = records.get(id)!
+    if (payload.version !== old.version)
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'conflict' } },
+      })
+    if (request.method() === 'DELETE') {
+      expect(Object.keys(payload)).toEqual(['version'])
+      deletionRequests.push(id)
+      records.delete(id)
+      return route.fulfill({ json: { deleted: true } })
+    }
+    expect(request.method()).toBe('PUT')
+    expect(Object.keys(payload).sort()).toEqual(
+      [
+        'assignee',
+        'branch',
+        'channel',
+        'firstDate',
+        'product',
+        'source',
+        'stage',
+        'version',
+      ].sort(),
+    )
+    const item = { ...old, ...payload, version: old.version + 1 }
+    records.set(id, item)
+    return route.fulfill({ json: { item: publicInquiry(item) } })
   })
   await page.route('**/api/analytics/event', (route) => {
     analyticsEvents++
@@ -360,10 +439,23 @@ for (const width of [390, 1440]) {
       },
     ]
     let listReads = 0
-    await page.route('**/api/inquiries/list', (route) => {
+    await page.route('**/api/inquiries', (route) => {
       expect(route.request().method()).toBe('GET')
       listReads++
-      return route.fulfill({ json: { rows } })
+      return route.fulfill({
+        json: {
+          items: rows.map((row, index) => ({
+            ...row,
+            id: `7f65dd01-c08c-4774-994b-c0bf0e68695${index}`,
+            version: 1,
+            name: '',
+            contact: '',
+            note: '',
+            customerType: null,
+            adId: null,
+          })),
+        },
+      })
     })
     const restrictedRequests: string[] = []
     page.on('request', (request) => {
@@ -406,8 +498,14 @@ for (const width of [390, 1440]) {
       }),
     ).toHaveCount(0)
     await expect(
-      page.getByRole('button', { name: /QR|연결 파일 선택|새 문의|수정|삭제/ }),
+      page.getByRole('button', { name: /QR|연결 파일 선택/ }),
     ).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: '새 문의', exact: true }),
+    ).toBeVisible()
+    await expect(table.getByRole('button', { name: /문의 수정$/ })).toHaveCount(
+      2,
+    )
     await expect(page.locator('input[type="password"]')).toHaveCount(0)
     expect(
       await page.evaluate(
@@ -478,10 +576,10 @@ test('공개 문의 목록 조회 오류는 0건으로 표시하지 않고 다�
 }) => {
   await mockWorkspace(page, false)
   let unavailable = true
-  await page.route('**/api/inquiries/list', (route) =>
+  await page.route('**/api/inquiries', (route) =>
     unavailable
       ? route.fulfill({ status: 503, json: { error: { code: 'unavailable' } } })
-      : route.fulfill({ json: { rows: [] } }),
+      : route.fulfill({ json: { items: [] } }),
   )
   await page.goto('/#inquiries')
   await expect(page.getByRole('alert')).toContainText(
@@ -533,14 +631,14 @@ test('담당자 연결 후 이름과 관리 기능이 표시되고 해제하면 
   await expect(
     page.getByRole('heading', { name: /문의·상담 현황/ }),
   ).toBeVisible()
-  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
+  await expect(page.getByText('고객 상세 정보', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
   ).toBeHidden()
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '새 문의', exact: true }),
-  ).toHaveCount(0)
+  ).toBeVisible()
   expect(api.reads()).toBe(0)
   await expect(page.locator('body')).not.toContainText(person.name)
   await page.goto('/#staff-device/' + deviceGrant)
@@ -552,7 +650,7 @@ test('담당자 연결 후 이름과 관리 기능이 표시되고 해제하면 
   await expect(
     page.getByRole('button', { name: '새 문의', exact: true }),
   ).toBeVisible()
-  expect(api.reads()).toBeGreaterThan(0)
+  await expect.poll(() => api.reads()).toBeGreaterThan(0)
   const summary = page.getByLabel('전체 문의 현황')
   await expectTotal(summary, 1)
   await expect(
@@ -561,13 +659,13 @@ test('담당자 연결 후 이름과 관리 기능이 표시되고 해제하면 
   for (const secret of [person.contact, person.note])
     await expect(page.locator('body')).not.toContainText(secret)
   await page.getByRole('button', { name: '이 기기 연결 해제' }).click()
-  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
+  await expect(page.getByText('고객 상세 정보', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
   ).toBeHidden()
   await expect(
     page.getByRole('button', { name: '새 문의', exact: true }),
-  ).toHaveCount(0)
+  ).toBeVisible()
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText(person.name)
   await expect(
@@ -582,7 +680,7 @@ test('문의 화면에서 선택한 연결 파일의 사이트를 검증하고 �
 }) => {
   const api = await mockWorkspace(page, false)
   await page.goto('/#inquiries')
-  await page.getByText('담당자 도구', { exact: true }).click()
+  await page.getByText('고객 상세 정보', { exact: true }).click()
   const makeLauncher = (href: string) => ({
     name: '운영-기기-연결.html',
     mimeType: 'text/html',
@@ -637,7 +735,7 @@ test('캘린더에서 문의·상담으로 이동하면 다른 탭에서 연결�
     note: '',
   })
   await page.goto('/#inquiries')
-  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
+  await expect(page.getByText('고객 상세 정보', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('button', { name: '연결 파일 선택' }),
   ).toBeHidden()
@@ -666,29 +764,256 @@ test('다른 탭에서 담당자 연결을 마치거나 해제한 뒤 기존 문
   page,
 }) => {
   const api = await mockWorkspace(page, false)
+  api.records.set('session-change-fixture', {
+    id: 'session-change-fixture',
+    version: 1,
+    firstDate: null,
+    branch: null,
+    product: 'lesson',
+    channel: 'phone',
+    source: 'unknown',
+    adId: null,
+    stage: 'received',
+    assignee: 'unassigned',
+    name: '권한 전환 검증',
+    contact: '',
+    note: '',
+  })
   await page.goto('/#inquiries')
   const recheck = page.getByRole('button', { name: '연결 상태 다시 확인' })
-  await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
+  await expect(page.getByText('고객 상세 정보', { exact: true })).toBeVisible()
   await expect(recheck).toBeHidden()
   api.setSignedIn(true)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   const list = page.getByRole('heading', { name: '문의 목록' })
-  const privateEditor = page.getByRole('button', {
-    name: '새 문의',
+  const privateColumn = page.getByRole('columnheader', {
+    name: '문의자',
     exact: true,
   })
-  await expect(privateEditor).toBeVisible()
+  await expect(privateColumn).toBeVisible()
   api.setSignedIn(false)
   await page.evaluate(() =>
     document.dispatchEvent(new Event('visibilitychange')),
   )
-  await expect(privateEditor).toHaveCount(0)
+  await expect(privateColumn).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '새 문의', exact: true }),
+  ).toBeVisible()
   await expect(list).toBeVisible()
-  await page.getByText('담당자 도구', { exact: true }).click()
+  await page.getByText('고객 상세 정보', { exact: true }).click()
   await expect(recheck).toBeVisible()
   api.setSignedIn(true)
   await recheck.click()
-  await expect(privateEditor).toBeVisible()
+  await expect(privateColumn).toBeVisible()
+})
+
+test('주소만 연 서로 다른 PC와 모바일에서 문의를 등록·수정·삭제하고 비공개 항목은 보존한다', async ({
+  browser,
+}) => {
+  const desktop = await browser.newContext({
+    baseURL: 'http://127.0.0.1:5174',
+    viewport: { width: 1440, height: 900 },
+  })
+  const mobile = await browser.newContext({
+    baseURL: 'http://127.0.0.1:5174',
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+  })
+  try {
+    const first = await desktop.newPage()
+    const second = await mobile.newPage()
+    const records = new Map<string, Inquiry>()
+    const firstApi = await mockWorkspace(first, false, records)
+    const secondApi = await mockWorkspace(second, false, records)
+    const restricted: string[] = []
+    for (const page of [first, second]) {
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname
+        if (path.startsWith('/api/admin/') || path === '/api/staff/activate')
+          restricted.push(path)
+      })
+      await page.goto('/#inquiries')
+      await expectTotal(page.getByLabel('전체 문의 현황'), 0)
+      await expect(
+        page.getByRole('button', { name: '새 문의', exact: true }),
+      ).toBeVisible()
+      await expect(page.locator('input[type="password"]')).toHaveCount(0)
+    }
+    await first.getByRole('button', { name: '새 문의', exact: true }).click()
+    const create = first.getByRole('dialog', { name: '새 문의 기록' })
+    await create.getByLabel('최초 문의일', { exact: true }).fill('2026-11-18')
+    await create
+      .getByRole('combobox', { name: '관심 상품', exact: true })
+      .selectOption('lesson')
+    await create
+      .getByRole('combobox', { name: '문의 채널', exact: true })
+      .selectOption('instagram_dm')
+    await create
+      .getByRole('combobox', { name: '유입 경로', exact: true })
+      .selectOption('instagram_ad')
+    await create
+      .getByRole('combobox', { name: '확인된 광고', exact: true })
+      .selectOption(demoAd.id)
+    await create.getByRole('radio', { name: '주니어', exact: true }).check()
+    await create.getByRole('radio', { name: '청담', exact: true }).check()
+    await create
+      .getByLabel('이름 또는 별칭', { exact: true })
+      .fill('새 문의 비공개 이름')
+    await create
+      .getByLabel('연락처', { exact: true })
+      .fill('synthetic-private-contact')
+    await create
+      .getByLabel('상담 메모', { exact: true })
+      .fill('새 문의 비공개 메모')
+    await create.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(create).toHaveCount(0)
+    await expectTotal(first.getByLabel('전체 문의 현황'), 1)
+    const stored = [...records.values()][0]
+    expect(stored).toMatchObject({
+      name: '새 문의 비공개 이름',
+      customerType: 'junior',
+      adId: demoAd.id,
+      version: 1,
+    })
+
+    await second.reload()
+    await expectTotal(second.getByLabel('전체 문의 현황'), 1)
+    const row = editableRow(second, stored)
+    await expect(row).toContainText('청담')
+    await row
+      .getByRole('button', { name: editLabel(stored), exact: true })
+      .click()
+    const edit = second.getByRole('dialog', { name: '문의 수정' })
+    for (const label of [
+      '이름 또는 별칭',
+      '연락처',
+      '상담 메모',
+      '확인된 광고',
+    ])
+      await expect(edit.getByLabel(label, { exact: true })).toHaveCount(0)
+    await expect(
+      edit.getByRole('group', { name: '문의 대상', exact: true }),
+    ).toHaveCount(0)
+    await edit
+      .getByRole('radio', { name: '김의현 원장님', exact: true })
+      .check()
+    await edit.getByRole('radio', { name: '서현', exact: true }).check()
+    await edit
+      .getByRole('combobox', { name: '진행 상태', exact: true })
+      .selectOption('consulting')
+    await edit.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(edit).toHaveCount(0)
+    expect(records.get(stored.id)).toMatchObject({
+      name: stored.name,
+      contact: stored.contact,
+      note: stored.note,
+      customerType: 'junior',
+      adId: demoAd.id,
+      version: 2,
+      assignee: 'kim_uihyeon',
+      branch: 'seohyeon',
+      stage: 'consulting',
+    })
+    await first.reload()
+    for (const page of [first, second]) {
+      const visible = editableRow(page, stored)
+      await expect(visible).toContainText('김의현 원장님')
+      await expect(visible).toContainText('서현')
+      await expect(visible).toContainText('상담 중')
+      for (const secret of [stored.name, stored.contact, stored.note])
+        await expect(page.locator('body')).not.toContainText(secret)
+    }
+    await row
+      .getByRole('button', { name: editLabel(stored), exact: true })
+      .click()
+    await edit.getByRole('button', { name: '문의 삭제', exact: true }).click()
+    await second
+      .getByRole('alertdialog', { name: '문의 삭제 확인' })
+      .getByRole('button', { name: '삭제하기', exact: true })
+      .click()
+    await expectTotal(second.getByLabel('전체 문의 현황'), 0)
+    await first.reload()
+    await expectTotal(first.getByLabel('전체 문의 현황'), 0)
+    expect(records.size).toBe(0)
+    expect(restricted).toEqual([])
+    expect(firstApi.grantUses() + secondApi.grantUses()).toBe(0)
+    expect(firstApi.reads() + secondApi.reads()).toBe(0)
+  } finally {
+    await desktop.close()
+    await mobile.close()
+  }
+})
+
+test('늦게 담당자 연결이 확인되어도 공개 문의 수정 중인 입력과 기존 개인정보를 보존한다', async ({
+  page,
+}) => {
+  const api = await mockWorkspace(page, false)
+  const stored: Inquiry = {
+    id: '5dc4259d-eeed-4b48-b6bf-736be24040dd',
+    version: 1,
+    firstDate: '2026-11-18',
+    product: 'lesson',
+    branch: 'cheongdam',
+    channel: 'phone',
+    source: 'unknown',
+    assignee: 'unassigned',
+    stage: 'received',
+    name: '담당자 전용 문의자',
+    contact: 'private-contact',
+    note: '기존 비공개 상담 메모',
+    customerType: 'junior',
+    adId: demoAd.id,
+  }
+  api.records.set(stored.id, stored)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/staff/session', async (route) => {
+    await pending
+    return route.fulfill({
+      json: { authenticated: true, csrfToken: sessionToken },
+    })
+  })
+  const privateWrites: string[] = []
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname.startsWith('/api/admin/inquiries') &&
+      request.method() !== 'GET'
+    )
+      privateWrites.push(request.url())
+  })
+  await page.goto('/#inquiries')
+  try {
+    await page
+      .getByRole('button', { name: editLabel(stored), exact: true })
+      .click()
+    const dialog = page.getByRole('dialog', { name: '문의 수정' })
+    await dialog.getByRole('radio', { name: '서현', exact: true }).check()
+    await expect(dialog.getByLabel('이름 또는 별칭')).toHaveCount(0)
+    api.setSignedIn(true)
+    release()
+    await expect(
+      page.getByRole('button', {
+        name: '이 기기 연결 해제',
+        includeHidden: true,
+      }),
+    ).toBeVisible()
+    await expect(
+      dialog.getByRole('radio', { name: '서현', exact: true }),
+    ).toBeChecked()
+    await expect(dialog.getByLabel('이름 또는 별칭')).toHaveCount(0)
+    await dialog.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(api.records.get(stored.id)).toEqual({
+      ...stored,
+      branch: 'seohyeon',
+      version: 2,
+    })
+    expect(privateWrites).toEqual([])
+  } finally {
+    release()
+  }
 })
 
 test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필터를 새로고침 후에도 확인한다', async ({

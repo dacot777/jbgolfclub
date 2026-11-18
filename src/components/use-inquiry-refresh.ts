@@ -22,10 +22,12 @@ export function useInquiryRefresh(enabled: boolean, refresh: () => void) {
     if (document.visibilityState === 'visible')
       timer = window.setTimeout(check, 60_000)
     document.addEventListener('visibilitychange', check)
+    window.addEventListener('focus', check)
     window.addEventListener('pageshow', restore)
     return () => {
       window.clearTimeout(timer)
       document.removeEventListener('visibilitychange', check)
+      window.removeEventListener('focus', check)
       window.removeEventListener('pageshow', restore)
     }
   }, [enabled])

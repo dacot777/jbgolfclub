@@ -6,11 +6,11 @@ Give mobile and desktop users the same data and actions for their access level. 
 
 ## Content calendar
 
-The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Staff select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and customer details require a registered staff browser.
+The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Anyone with the site address can create, edit and delete ordinary schedules without an invitation or device registration. Select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and existing customer details require a registered staff browser.
 
 ## Inquiry list
 
-PC and mobile use one table with the same column headings, ordering, counts and one row per inquiry. On smaller screens the table scrolls horizontally inside its panel. Customer details and editing are available in the staff view.
+PC and mobile use one table with the same column headings, ordering, counts and one row per inquiry. On smaller screens the table scrolls horizontally inside its panel. Anyone with the address can create inquiries and edit the seven public fields or delete a record. Existing customer details remain available in the staff view. New inquiry private fields are encrypted server-side and never returned to anonymous clients. Public updates preserve existing private fields. Both workspaces refresh while visible and when returning to the page, without replacing an open draft; stale versions require reviewing the latest record before saving.
 
 ## States and data
 

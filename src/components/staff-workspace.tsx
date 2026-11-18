@@ -149,7 +149,7 @@ export default function StaffWorkspace({
         ? previous
         : {
             csrf: next,
-            // Pairing preserves a public draft. Losing or replacing a staff session
+            // Gaining private access preserves a public draft. Losing or replacing a staff session
             // unmounts the previous calendar along with all of its private state.
             revision: previous.revision + (previous.csrf ? 1 : 0),
           },
@@ -257,7 +257,7 @@ export default function StaffWorkspace({
   )
   return (
     <>
-      {(page !== 'inquiries' || csrf) && sessionNotice}
+      {csrf && sessionNotice}
       <Suspense fallback={<p role="status">페이지를 여는 중입니다.</p>}>
         {page !== 'inquiries' ? (
           <>
@@ -279,25 +279,7 @@ export default function StaffWorkspace({
               csrfToken={csrf}
               onUnauthorized={expired}
               readFeed={csrf ? undefined : readPublicMonth}
-              registrationAccess={
-                page === 'calendar' && !csrf ? (
-                  <section aria-label="담당 기기 연결" className="grid gap-3">
-                    <h3 className="font-semibold">
-                      일정을 저장하려면 이 브라우저를 연결해 주세요
-                    </h3>
-                    <p>
-                      업무용 PC의 연결 파일을 한 번 선택하면 지금 작성한 일정을
-                      이어서 저장할 수 있어요.
-                    </p>
-                    <StaffDeviceAccess
-                      workspace="calendar"
-                      onConnected={changeSession}
-                      onCheck={check}
-                      checking={checking}
-                    />
-                  </section>
-                ) : undefined
-              }
+              allowPublicScheduleEditing={page === 'calendar'}
             />
           </>
         ) : (
@@ -322,12 +304,13 @@ export default function StaffWorkspace({
             {!csrf && (
               <details className="mt-5 max-w-2xl text-sm">
                 <summary className="w-fit cursor-pointer py-3 font-medium">
-                  담당자 도구
+                  고객 상세 정보
                 </summary>
                 <div className="grid gap-3 py-2">
                   <p>
-                    연결된 업무용 브라우저에서는 고객 이름, 연락처, 상담 메모를
-                    확인하고 문의를 수정할 수 있습니다.
+                    문의 등록과 진행 정보 수정은 바로 할 수 있습니다. 기존
+                    고객의 이름, 연락처, 상담 메모는 연결된 업무용 브라우저에서
+                    확인합니다.
                   </p>
                   {sessionNotice}
                   <StaffDeviceAccess

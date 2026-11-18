@@ -118,6 +118,67 @@ async function mockStaff(page: Page) {
   }
 }
 
+async function mockPublicCalendar(
+  page: Page,
+  records: Map<string, CalendarSchedule>,
+) {
+  const restrictedRequests: string[] = []
+  await page.clock.setFixedTime(new Date(day + 'T03:00:00Z'))
+  await page.route('https://www.instagram.com/**/embed/', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<main>Instagram</main>' }),
+  )
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith('/api/admin/') || path === '/api/staff/activate')
+      restrictedRequests.push(path)
+  })
+  await page.route('**/api/staff/session', (route) =>
+    route.fulfill({ json: { authenticated: false } }),
+  )
+  await page.route('**/api/calendar?*', (route) => {
+    const month = new URL(route.request().url()).searchParams.get('month')!
+    return route.fulfill({
+      json: monthly(
+        month,
+        [...records.values()].map((item) => ({ ...item, note: '' })),
+      ),
+    })
+  })
+  await page.route('**/api/calendar/schedules**', (route) => {
+    const request = route.request()
+    const body = request.postDataJSON()
+    expect(request.headers()['x-csrf-token']).toBeUndefined()
+    expect(body).not.toHaveProperty('note')
+    if (request.method() === 'POST') {
+      const item: CalendarSchedule = { ...body, note: '', version: 1 }
+      records.set(item.id, item)
+      return route.fulfill({ status: 201, json: { item } })
+    }
+    const id = new URL(request.url()).pathname.split('/').pop()!
+    const current = records.get(id)!
+    if (body.version !== current.version)
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'schedule_changed' } },
+      })
+    if (request.method() === 'DELETE') {
+      expect(Object.keys(body)).toEqual(['version'])
+      records.delete(id)
+      return route.fulfill({ json: { deleted: true } })
+    }
+    expect(request.method()).toBe('PUT')
+    const item: CalendarSchedule = {
+      ...current,
+      ...body,
+      id,
+      version: current.version + 1,
+    }
+    records.set(id, item)
+    return route.fulfill({ json: { item: { ...item, note: '' } } })
+  })
+  return { restrictedRequests }
+}
+
 test('모바일 일정 달력에서 일정 브랜드와 지점을 보고 게시물 원문을 연다', async ({
   page,
 }) => {
@@ -509,7 +570,9 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
   await expect(
     dialog.getByRole('button', { name: '이 날짜에 일정 등록' }),
   ).toBeVisible()
-  await expect(dialog.getByRole('button', { name: /수정|삭제/ })).toHaveCount(0)
+  await expect(
+    dialog.getByRole('button', { name: '테스트 일정 일정 수정' }),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
   await calendar.getByRole('button', { name: '다음 달' }).click()
   await expect(
@@ -519,108 +582,171 @@ test('기기 연결 없이 공개 달력에서 썸네일과 일정을 열고 다
 })
 
 for (const width of [390, 1440]) {
-  test(`${width}px 공개 캘린더에서 일정 등록을 시작하고 업무 기기 연결 후 선택한 날짜에 저장한다`, async ({
-    page,
+  test(`${width}px 새 브라우저에서 일정 등록 후 다른 기기에서 수정·삭제한다`, async ({
+    browser,
   }) => {
-    await page.setViewportSize({ width, height: 844 })
-    const { records } = await mockStaff(page)
-    const grant = 'C'.repeat(43)
-    let connected = false
-    const prematureRequests: string[] = []
-    page.on('request', (request) => {
-      if (
-        !connected &&
-        new URL(request.url()).pathname.startsWith('/api/admin/calendar')
-      )
-        prematureRequests.push(request.url())
-    })
-    await page.route('**/api/staff/session', (route) =>
-      route.fulfill({
-        json: connected
-          ? { authenticated: true, csrfToken }
-          : { authenticated: false },
-      }),
-    )
-    await page.route('**/api/calendar?*', (route) => {
-      const month = new URL(route.request().url()).searchParams.get('month')!
-      return route.fulfill({ json: monthly(month, [plan]) })
-    })
-    await page.route('**/api/staff/activate', (route) => {
-      expect(route.request().method()).toBe('POST')
-      expect(route.request().postDataJSON().token).toBe(grant)
-      connected = true
-      return route.fulfill({ json: { authenticated: true, csrfToken } })
-    })
-
-    await page.goto('/#calendar')
-    const calendar = page.getByRole('region', { name: '콘텐츠 캘린더' })
-    const register = calendar.getByRole('button', {
-      name: '일정 등록',
-      exact: true,
-    })
-    await expect(register).toBeInViewport()
-    await expect(register).toBeEnabled()
-    let scheduledDate = day
-    if (width === 390) {
-      await register.click()
-    } else {
-      scheduledDate = '2026-12-13'
-      await calendar.getByRole('button', { name: '다음 달' }).click()
-      await calendar.getByRole('button', { name: /^2026-12-13/ }).click()
-      await page.getByRole('button', { name: '이 날짜에 일정 등록' }).click()
-    }
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByLabel('날짜')).toHaveValue(scheduledDate)
-    await dialog.getByLabel('일정 제목').fill('새 아카데미 일정')
-    await dialog.getByRole('radio', { name: 'JB아카데미', exact: true }).check()
-    const format = width === 390 ? '블로그' : '게시물'
-    await dialog.getByRole('radio', { name: '업로드', exact: true }).check()
-    await dialog.getByRole('radio', { name: format, exact: true }).check()
-    await expect(
-      dialog.getByRole('button', { name: '연결 파일 선택' }),
-    ).toHaveCount(0)
-    await dialog.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(
-      dialog.getByRole('button', { name: '연결 파일 선택' }),
-    ).toBeVisible()
-    await expect(page.locator('input[type=password]')).toHaveCount(0)
-    expect([...records.values()]).toEqual([plan])
-    await dialog.getByLabel('담당자 연결 파일').setInputFiles({
-      name: '운영-기기-연결.html',
-      mimeType: 'text/html',
-      buffer: Buffer.from(
-        `<a href="https://jbgolf-connection.jbgolfacademy.workers.dev/#staff-device/${grant}">연결</a>`,
+    const contexts = await Promise.all(
+      [width, width === 390 ? 1440 : 390].map((viewportWidth) =>
+        browser.newContext({
+          baseURL: 'http://127.0.0.1:5174',
+          viewport: { width: viewportWidth, height: 844 },
+        }),
       ),
-    })
-    await expect(dialog.getByLabel('날짜')).toHaveValue(scheduledDate)
-    await expect(dialog.getByLabel('일정 제목')).toHaveValue('새 아카데미 일정')
-    await expect(
-      dialog.getByRole('radio', { name: 'JB아카데미', exact: true }),
-    ).toBeChecked()
-    await expect(
-      dialog.getByRole('radio', { name: '업로드', exact: true }),
-    ).toBeChecked()
-    await expect(
-      dialog.getByRole('radio', { name: format, exact: true }),
-    ).toBeChecked()
-    await expect(
-      dialog.getByRole('button', { name: '연결 파일 선택' }),
-    ).toHaveCount(0)
-    await dialog.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(
-      calendar.getByRole('button', { name: '새 아카데미 일정 일정 수정' }),
-    ).toBeVisible()
-    expect(
-      [...records.values()].find((item) => item.title === '새 아카데미 일정'),
-    ).toMatchObject({
-      brand: 'academy',
-      date: scheduledDate,
-      kind: width === 390 ? 'upload_blog' : 'upload_post',
-    })
-    expect(prematureRequests).toEqual([])
-    await expect(page).toHaveURL(/#calendar$/)
+    )
+    try {
+      const page = await contexts[0].newPage()
+      const other = await contexts[1].newPage()
+      const records = new Map([
+        [plan.id, { ...plan, note: '담당자만 보는 일정 메모' }],
+      ])
+      const initial = await mockPublicCalendar(page, records)
+      const teammate = await mockPublicCalendar(other, records)
+      await page.goto('/#calendar')
+      const calendar = page.getByRole('region', { name: '콘텐츠 캘린더' })
+      const register = calendar.getByRole('button', {
+        name: '일정 등록',
+        exact: true,
+      })
+      await expect(register).toBeInViewport()
+      await expect(register).toBeEnabled()
+      await register.click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByLabel('날짜')).toHaveValue(day)
+      await dialog.getByLabel('일정 제목').fill('새 아카데미 일정')
+      await dialog
+        .getByRole('radio', { name: 'JB아카데미', exact: true })
+        .check()
+      const format = width === 390 ? '블로그' : '게시물'
+      await dialog.getByRole('radio', { name: '업로드', exact: true }).check()
+      await dialog.getByRole('radio', { name: format, exact: true }).check()
+      await expect(dialog.getByLabel('메모')).toHaveCount(0)
+      await expect(
+        dialog.getByRole('button', { name: '연결 파일 선택' }),
+      ).toHaveCount(0)
+      await dialog.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(dialog).toHaveCount(0)
+      const newEdit = calendar.getByRole('button', {
+        name: '새 아카데미 일정 일정 수정',
+      })
+      await expect(newEdit).toBeVisible()
+      expect(
+        [...records.values()].find((item) => item.title === '새 아카데미 일정'),
+      ).toMatchObject({
+        brand: 'academy',
+        date: day,
+        kind: width === 390 ? 'upload_blog' : 'upload_post',
+      })
+
+      await other.goto('/#calendar')
+      await expect(
+        other.getByRole('button', { name: '새 아카데미 일정 일정 수정' }),
+      ).toBeVisible()
+      await other.getByRole('button', { name: '테스트 일정 일정 수정' }).click()
+      const editor = other.getByRole('dialog')
+      await expect(editor.getByLabel('메모')).toHaveCount(0)
+      await editor.getByLabel('일정 제목').fill('팀에서 수정한 일정')
+      await editor
+        .getByRole('radio', { name: 'JB골프클럽', exact: true })
+        .check()
+      await editor.getByRole('radio', { name: '청담', exact: true }).check()
+      await editor.getByRole('radio', { name: '촬영', exact: true }).check()
+      await editor.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(editor).toHaveCount(0)
+      expect(records.get(plan.id)).toMatchObject({
+        title: '팀에서 수정한 일정',
+        brand: 'club',
+        branch: 'cheongdam',
+        kind: 'shoot',
+        note: '담당자만 보는 일정 메모',
+        version: 2,
+      })
+      await page.reload()
+      for (const browserPage of [page, other]) {
+        const edited = browserPage.getByRole('button', {
+          name: '팀에서 수정한 일정 일정 수정',
+        })
+        await expect(edited).toBeVisible()
+        await expect(edited).toContainText('청담')
+        await expect(browserPage.locator('body')).not.toContainText(
+          '담당자만 보는 일정 메모',
+        )
+        await expect(browserPage.locator('input[type=password]')).toHaveCount(0)
+        expect(
+          await browserPage.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true)
+      }
+      await other
+        .getByRole('button', { name: '새 아카데미 일정 일정 수정' })
+        .click()
+      await editor.getByRole('button', { name: '일정 삭제' }).click()
+      await editor.getByRole('button', { name: '삭제하기' }).click()
+      await expect(editor).toHaveCount(0)
+      await page.reload()
+      await expect(newEdit).toHaveCount(0)
+      expect(records.size).toBe(1)
+      expect(initial.restrictedRequests).toEqual([])
+      expect(teammate.restrictedRequests).toEqual([])
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()))
+    }
   })
 }
+
+test('늦게 담당자 연결이 확인되어도 먼저 연 공개 일정 수정은 비공개 메모를 덮어쓰지 않는다', async ({
+  page,
+}) => {
+  const records = new Map([
+    [plan.id, { ...plan, note: '담당자 일정 메모 보존' }],
+  ])
+  await mockPublicCalendar(page, records)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/staff/session', async (route) => {
+    await pending
+    return route.fulfill({ json: { authenticated: true, csrfToken } })
+  })
+  await page.route('**/api/admin/calendar?*', (route) => {
+    const month = new URL(route.request().url()).searchParams.get('month')!
+    return route.fulfill({ json: monthly(month, [...records.values()]) })
+  })
+  const privateWrites: string[] = []
+  await page.route('**/api/admin/calendar/schedules**', (route) => {
+    privateWrites.push(route.request().url())
+    return route.fulfill({ status: 403, json: {} })
+  })
+  await page.goto('/#calendar')
+  try {
+    await page.getByRole('button', { name: '테스트 일정 일정 수정' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('일정 제목').fill('먼저 입력한 공개 일정 수정')
+    await expect(dialog.getByLabel('메모')).toHaveCount(0)
+    release()
+    await expect(
+      page.getByRole('button', {
+        name: '이 기기 연결 해제',
+        includeHidden: true,
+      }),
+    ).toBeVisible()
+    await expect(dialog.getByLabel('일정 제목')).toHaveValue(
+      '먼저 입력한 공개 일정 수정',
+    )
+    await expect(dialog.getByLabel('메모')).toHaveCount(0)
+    await dialog.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(records.get(plan.id)).toMatchObject({
+      title: '먼저 입력한 공개 일정 수정',
+      note: '담당자 일정 메모 보존',
+      version: 2,
+    })
+    expect(privateWrites).toEqual([])
+  } finally {
+    release()
+  }
+})
 
 test('피드를 직접 열면 광고 보고서나 광고 실적을 요청하지 않는다', async ({
   page,

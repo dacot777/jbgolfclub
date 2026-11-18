@@ -254,7 +254,9 @@ async function deletion(request: Request, env: Env) {
   if (account) await clearConnection(env, account.user_id)
   await env.DB.prepare(
     'DELETE FROM calendar_instagram_accounts WHERE user_id=? OR oauth_user_id=? OR app_scoped_id=?',
-  ).bind(userId, userId, userId).run()
+  )
+    .bind(userId, userId, userId)
+    .run()
   const code = crypto.randomUUID()
   await env.DB.prepare(
     'INSERT INTO deletion_confirmations(code,created_at) VALUES (?,?)',
@@ -274,9 +276,28 @@ async function api(request: Request, env: Env) {
     return publicInquirySummary(env.DB)
   if (path === '/api/inquiries/list' && request.method === 'GET')
     return publicInquiryList(env.DB)
-  if (path === '/api/calendar' || path === '/api/calendar/posts' || path.startsWith(PUBLIC_THUMBNAIL_PATH))
+  if (
+    path === '/api/inquiries' ||
+    (path.startsWith('/api/inquiries/') &&
+      path !== '/api/inquiries/summary' &&
+      path !== '/api/inquiries/list') ||
+    path === '/api/calendar/schedules' ||
+    path.startsWith('/api/calendar/schedules/')
+  )
+    return adminAnalytics(request, env)
+  if (
+    path === '/api/calendar' ||
+    path === '/api/calendar/posts' ||
+    path.startsWith(PUBLIC_THUMBNAIL_PATH)
+  )
     return publicCalendar(request, env, path)
-  if (path.startsWith('/api/staff/') || path.startsWith('/api/admin/') || path === '/api/analytics/event' || path === '/api/calendar/view' || path.startsWith('/api/calendar/view/thumbnail/'))
+  if (
+    path.startsWith('/api/staff/') ||
+    path.startsWith('/api/admin/') ||
+    path === '/api/analytics/event' ||
+    path === '/api/calendar/view' ||
+    path.startsWith('/api/calendar/view/thumbnail/')
+  )
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
@@ -285,7 +306,10 @@ async function api(request: Request, env: Env) {
   if (path === '/api/meta-ads/lifetime' && request.method === 'GET')
     return json(await readMetaLifetime(env))
   if (path.startsWith('/api/meta-ads/thumbnail/') && request.method === 'GET')
-    return getMetaAdThumbnail(env, path.slice('/api/meta-ads/thumbnail/'.length))
+    return getMetaAdThumbnail(
+      env,
+      path.slice('/api/meta-ads/thumbnail/'.length),
+    )
   if (path === '/api/media' && request.method === 'GET')
     return mediaFeed(request, env.DB)
   if (path === '/api/connection' && request.method === 'GET')
@@ -419,7 +443,11 @@ export default {
     } else if (event.cron === '45 * * * *') {
       await syncCalendarInstagram(env)
     } else if (event.cron === '0 0 * * *') {
-      await Promise.allSettled([cleanupAnalytics(env), cleanupStaffAccess(env), maintainConnection(env)])
+      await Promise.allSettled([
+        cleanupAnalytics(env),
+        cleanupStaffAccess(env),
+        maintainConnection(env),
+      ])
     }
   },
 }

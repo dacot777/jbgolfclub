@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -62,6 +63,7 @@ type Panel =
   | {
       type: 'editor'
       published: boolean
+      publicEditing: boolean
       original: CalendarSchedule | null
       id: string
       fromDay: string | null
@@ -304,14 +306,14 @@ export default function ContentCalendar({
   csrfToken,
   onUnauthorized,
   readFeed,
-  registrationAccess,
+  allowPublicScheduleEditing = false,
   reviewedAds = noReviewedAds,
   view = 'calendar',
 }: {
   csrfToken: string
   onUnauthorized: () => void
   readFeed?: (month: string, signal: AbortSignal) => Promise<Response>
-  registrationAccess?: ReactNode
+  allowPublicScheduleEditing?: boolean
   reviewedAds?: ReviewedAd[]
   view?: 'calendar' | 'gallery'
 }) {
@@ -319,8 +321,8 @@ export default function ContentCalendar({
   const [month, setMonth] = useState(
     view === 'gallery' ? 'latest' : today.slice(0, 7),
   )
-  const canStartSchedule = !readFeed || Boolean(registrationAccess)
-  const [needsDevice, setNeedsDevice] = useState(false)
+  const canStartSchedule =
+    !readFeed || (allowPublicScheduleEditing && view === 'calendar')
   const [data, setData] = useState<CalendarMonth | null>(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -346,7 +348,7 @@ export default function ContentCalendar({
       controller.abort()
       session.current = null
     }
-  }, [csrfToken])
+  }, [])
   const expire = useCallback(() => {
     session.current?.abort()
     setData(null)
@@ -424,23 +426,32 @@ export default function ContentCalendar({
     url.searchParams.delete('calendar_instagram')
     history.replaceState(history.state, '', url)
   }, [readFeed])
+  const refreshCalendar = useEffectEvent(() => {
+    // Keep a team's incoming changes from replacing an in-progress draft.
+    // The original version is checked again by the server when it is saved.
+    if (writeLock.current || panel?.type === 'editor') return
+    setReload((n) => n + 1)
+  })
   useEffect(() => {
-    let last = Date.now()
+    let last = -Infinity
     const refresh = () => {
-      if (
-        document.visibilityState !== 'visible' ||
-        writeLock.current ||
-        Date.now() - last < 60000
-      )
+      if (document.visibilityState !== 'visible' || Date.now() - last < 1000)
         return
       last = Date.now()
-      setReload((n) => n + 1)
+      refreshCalendar()
     }
-    const timer = window.setInterval(refresh, 300000)
+    const restored = (event: PageTransitionEvent) => {
+      if (event.persisted) refresh()
+    }
+    const timer = window.setInterval(refresh, 60000)
     document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    window.addEventListener('pageshow', restored)
     return () => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('pageshow', restored)
     }
   }, [])
   const current = data?.month === month ? data : null
@@ -521,8 +532,7 @@ export default function ContentCalendar({
     item?: CalendarSchedule,
     published = Boolean(item?.permalink),
   ) {
-    if (readFeed && (!registrationAccess || item || published)) return
-    setNeedsDevice(false)
+    if (readFeed && (!canStartSchedule || published)) return
     const initial: ScheduleDraft = item
       ? {
           account: published ? item.account : null,
@@ -531,7 +541,7 @@ export default function ContentCalendar({
           title: item.title,
           date: item.date,
           time: item.time,
-          note: item.note,
+          note: readFeed ? '' : item.note,
           permalink: item.permalink ?? null,
         }
       : {
@@ -548,6 +558,7 @@ export default function ContentCalendar({
     open({
       type: 'editor',
       published,
+      publicEditing: Boolean(readFeed),
       original: item ?? null,
       id: item?.id ?? crypto.randomUUID(),
       fromDay: panel?.type === 'day' ? panel.date : null,
@@ -569,8 +580,8 @@ export default function ContentCalendar({
   }
   async function write(action: 'save' | 'delete') {
     if (
-      readFeed ||
       panel?.type !== 'editor' ||
+      (readFeed && (!canStartSchedule || panel.published)) ||
       !draft ||
       writeLock.current ||
       conflict
@@ -598,6 +609,7 @@ export default function ContentCalendar({
     setBusy(true)
     setActionError('')
     const original = panel.original
+    const publicEditing = panel.publicEditing
     try {
       const linkedPost = draft.account
         ? parseCalendarPermalink(draft.permalink, draft.account)
@@ -610,14 +622,15 @@ export default function ContentCalendar({
       }
       const method = action === 'delete' ? 'DELETE' : original ? 'PUT' : 'POST'
       const path =
-        api +
+        (publicEditing ? '/api/calendar' : api) +
         '/schedules' +
         (original ? '/' + encodeURIComponent(original.id) : '')
+      const { note: _privateNote, ...publicDraft } = draft
       const body =
         action === 'delete'
           ? { version: original!.version }
           : {
-              ...draft,
+              ...(publicEditing ? publicDraft : draft),
               title: draft.title.trim(),
               ...(panel.published && linkedPost
                 ? { permalink: linkedPost.permalink, kind: linkedPost.kind }
@@ -626,17 +639,17 @@ export default function ContentCalendar({
             }
       const res = await fetch(path, {
         method,
-        credentials: 'same-origin',
+        credentials: publicEditing ? 'omit' : 'same-origin',
         cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
+          ...(!publicEditing ? { 'X-CSRF-Token': csrfToken } : {}),
         },
         body: JSON.stringify(body),
         signal: AbortSignal.any([active.signal, AbortSignal.timeout(15000)]),
       })
       if (active.signal.aborted) return
-      if (res.status === 401 || res.status === 403) {
+      if (!publicEditing && (res.status === 401 || res.status === 403)) {
         expire()
         return
       }
@@ -667,19 +680,23 @@ export default function ContentCalendar({
       )
         throw new Error()
       setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              schedules: [
-                ...prev.schedules.filter((item) => item.id !== panel.id),
-                ...(action === 'save' &&
-                (prev.month === 'latest' ||
-                  draft.date.startsWith(prev.month + '-'))
-                  ? [result.item as CalendarSchedule]
-                  : []),
-              ],
-            }
-          : prev,
+        // Re-read after a shared edit. A staff session may have arrived while
+        // saving; its next editor must receive private notes from its own feed.
+        publicEditing
+          ? null
+          : prev
+            ? {
+                ...prev,
+                schedules: [
+                  ...prev.schedules.filter((item) => item.id !== panel.id),
+                  ...(action === 'save' &&
+                  (prev.month === 'latest' ||
+                    draft.date.startsWith(prev.month + '-'))
+                    ? [result.item as CalendarSchedule]
+                    : []),
+                ],
+              }
+            : prev,
       )
       if (action === 'save' && view === 'calendar')
         setMonth(draft.date.slice(0, 7))
@@ -753,10 +770,6 @@ export default function ContentCalendar({
   }
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (readFeed) {
-      if (registrationAccess) setNeedsDevice(true)
-      return
-    }
     void write('save')
   }
   function dayKeys(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -966,7 +979,9 @@ export default function ContentCalendar({
                 {plans.length ? (
                   <AgendaList
                     entries={plans}
-                    onEdit={readFeed ? undefined : (p) => editor(p.date, p)}
+                    onEdit={
+                      canStartSchedule ? (p) => editor(p.date, p) : undefined
+                    }
                   />
                 ) : (
                   <p>이달에 등록한 일정이 없습니다.</p>
@@ -1144,7 +1159,9 @@ export default function ContentCalendar({
                     <EntryList
                       entries={dailyEntries}
                       showStatus
-                      onEdit={readFeed ? undefined : (p) => editor(p.date, p)}
+                      onEdit={
+                        canStartSchedule ? (p) => editor(p.date, p) : undefined
+                      }
                     />
                   ) : (
                     <p>이 날짜에 표시할 게시물이나 일정이 없습니다.</p>
@@ -1194,26 +1211,8 @@ export default function ContentCalendar({
                     </button>
                   </div>
                 </>
-              ) : needsDevice && readFeed ? (
-                <>
-                  <div className="cc-dialog-body">{registrationAccess}</div>
-                  <div className="cc-dialog-foot">
-                    <button
-                      className="cc-outline"
-                      type="button"
-                      onClick={() => setNeedsDevice(false)}
-                    >
-                      입력으로 돌아가기
-                    </button>
-                  </div>
-                </>
               ) : (
                 <form className="cc-form" onSubmit={submit}>
-                  {needsDevice && !readFeed && (
-                    <p className="cc-form-error" role="status">
-                      담당자 기기가 연결됐습니다. 입력한 일정을 저장해 주세요.
-                    </p>
-                  )}
                   <fieldset
                     className="cc-dialog-body cc-fields"
                     disabled={busy || conflict}
@@ -1396,15 +1395,17 @@ export default function ContentCalendar({
                         }
                       />
                     </label>
-                    <label className="cc-wide">
-                      메모
-                      <textarea
-                        rows={3}
-                        maxLength={CALENDAR_LIMITS.note}
-                        value={draft.note}
-                        onChange={(e) => setField('note', e.target.value)}
-                      />
-                    </label>
+                    {!panel.publicEditing && (
+                      <label className="cc-wide">
+                        메모
+                        <textarea
+                          rows={3}
+                          maxLength={CALENDAR_LIMITS.note}
+                          value={draft.note}
+                          onChange={(e) => setField('note', e.target.value)}
+                        />
+                      </label>
+                    )}
                   </fieldset>
                   {actionError && (
                     <div className="cc-form-error">

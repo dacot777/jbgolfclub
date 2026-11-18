@@ -262,3 +262,68 @@ export async function deleteSchedule(
     throw new CalendarError('calendar_conflict', 409)
   return { deleted: true }
 }
+
+function publicSchedule(item: CalendarSchedule): CalendarSchedule {
+  return { ...item, note: '' }
+}
+
+function ordinaryScheduleInput(raw: Record<string, unknown>) {
+  if (raw.permalink != null && raw.permalink !== '')
+    throw new CalendarError('calendar_publication_read_only', 403)
+  return { ...raw, permalink: undefined }
+}
+
+export async function createPublicSchedule(
+  env: Env,
+  raw: Record<string, unknown>,
+  fingerprintFor: (value: string) => Promise<string>,
+) {
+  return publicSchedule(
+    await createSchedule(
+      env,
+      { ...ordinaryScheduleInput(raw), note: '' },
+      fingerprintFor,
+    ),
+  )
+}
+
+async function ordinarySchedule(
+  env: Env,
+  idValue: string,
+  versionValue: unknown,
+) {
+  const version = versionFrom(versionValue)
+  const original = await env.DB.prepare(
+    'SELECT version,note,permalink FROM calendar_schedules WHERE id=? AND day IS NOT NULL',
+  )
+    .bind(idFrom(idValue))
+    .first<Pick<CalendarSchedule, 'version' | 'note' | 'permalink'>>()
+  if (original && original.version !== version)
+    throw new CalendarError('calendar_conflict', 409)
+  if (original?.permalink)
+    throw new CalendarError('calendar_publication_read_only', 403)
+  return original
+}
+
+export async function updatePublicSchedule(
+  env: Env,
+  idValue: string,
+  raw: Record<string, unknown>,
+) {
+  const input = ordinaryScheduleInput(raw)
+  const original = await ordinarySchedule(env, idValue, raw.version)
+  if (!original) throw new CalendarError('calendar_not_found', 404)
+  // Staff-only notes remain unchanged; the shared form never receives them.
+  return publicSchedule(
+    await updateSchedule(env, idValue, { ...input, note: original.note }),
+  )
+}
+
+export async function deletePublicSchedule(
+  env: Env,
+  idValue: string,
+  raw: Record<string, unknown>,
+) {
+  await ordinarySchedule(env, idValue, raw.version)
+  return deleteSchedule(env, idValue, raw)
+}

@@ -16,7 +16,6 @@ import {
 } from '@/lib/inquiry-types'
 import type { MetaAdCard } from '@/lib/meta-ads-types'
 import InquiryList from './inquiry-list'
-import { usePublicInquiryList } from './use-public-inquiry-list'
 import { useInquiryRefresh } from './use-inquiry-refresh'
 import '@/inquiry-workspace.css'
 
@@ -28,6 +27,7 @@ type Draft = Omit<InquiryInput, 'product' | 'channel' | 'nextAction'> & {
 type Edit = {
   id: string
   version: number | null
+  publicEditing: boolean
   draft: Draft
   savedSummary?: string
   previousAction?: string
@@ -46,7 +46,6 @@ const emptyDraft: Draft = {
   contact: '',
   note: '',
 }
-const collectionPath = '/api/admin/inquiries'
 const branchChoices = { '': '미지정', ...BRANCH_LABELS }
 const customerChoices = { '': '미지정', ...CUSTOMER_TYPE_LABELS }
 const noStore = { credentials: 'same-origin', cache: 'no-store' } as const
@@ -102,7 +101,7 @@ function InquiryChoices<T extends string>({
   )
 }
 
-function editItem(item: Inquiry): Edit {
+function editItem(item: Inquiry, publicEditing: boolean): Edit {
   const { id, version, nextAction, ...fields } = item
   const draft: Draft = { ...fields, customerType: item.customerType ?? null }
   const savedSummary = [
@@ -117,6 +116,7 @@ function editItem(item: Inquiry): Edit {
   return {
     id,
     version,
+    publicEditing,
     draft,
     savedSummary,
     previousAction: nextAction?.trim() ? nextAction : undefined,
@@ -151,8 +151,8 @@ export default function InquiryWorkspace({
   csrfToken: string
   onUnauthorized: () => void
 }) {
+  const collectionPath = csrfToken ? '/api/admin/inquiries' : '/api/inquiries'
   const [items, setItems] = useState<Inquiry[] | null>(null)
-  const publicList = usePublicInquiryList(!csrfToken || !items)
   const [ads, setAds] = useState<AdOption[]>([])
   const [listError, setListError] = useState(false)
   const [adError, setAdError] = useState(false)
@@ -197,7 +197,7 @@ export default function InquiryWorkspace({
         signal: AbortSignal.any([current.signal, AbortSignal.timeout(12000)]),
       })
       if (current.signal.aborted) return
-      if (response.status === 401 || response.status === 403) {
+      if (csrfToken && (response.status === 401 || response.status === 403)) {
         endSession()
         return
       }
@@ -216,7 +216,7 @@ export default function InquiryWorkspace({
     } finally {
       if (loadingList.current === request) loadingList.current = 0
     }
-  }, [endSession])
+  }, [collectionPath, csrfToken, endSession])
 
   const loadAds = useCallback(async () => {
     const current = session.current
@@ -244,22 +244,27 @@ export default function InquiryWorkspace({
   }, [])
 
   useEffect(() => {
-    if (!csrfToken) return
     const current = new AbortController()
     session.current = current
-    setItems(null)
-    setEdit(null)
-    setListError(false)
-    setProblem('')
-    setNotice('')
-    void load()
-    void loadAds()
-    return () => {
-      current.abort()
-    }
-  }, [csrfToken, load, loadAds])
+    return () => current.abort()
+  }, [])
 
-  useInquiryRefresh(!!csrfToken, () => {
+  useEffect(() => {
+    setItems(null)
+    setListError(false)
+    void load()
+  }, [load])
+
+  useEffect(() => {
+    void loadAds()
+  }, [loadAds])
+
+  const reloadCurrent = useRef(load)
+  useEffect(() => {
+    reloadCurrent.current = load
+  }, [load])
+
+  useInquiryRefresh(true, () => {
     if (!edit && !writePending.current && !loadingList.current) void load()
   })
 
@@ -277,8 +282,13 @@ export default function InquiryWorkspace({
     setConfirmDelete(false)
     setEdit(
       record
-        ? editItem(record)
-        : { id: crypto.randomUUID(), version: null, draft: { ...emptyDraft } },
+        ? editItem(record, !csrfToken)
+        : {
+            id: crypto.randomUUID(),
+            version: null,
+            publicEditing: !csrfToken,
+            draft: { ...emptyDraft },
+          },
     )
   }
   function change<K extends keyof Draft>(field: K, value: Draft[K]) {
@@ -316,31 +326,47 @@ export default function InquiryWorkspace({
     setSaving(true)
     setProblem('')
     const creating = edit.version === null
+    const editPath = edit.publicEditing
+      ? '/api/inquiries'
+      : '/api/admin/inquiries'
+    const payload =
+      !edit.publicEditing || creating
+        ? edit.draft
+        : {
+            firstDate: edit.draft.firstDate,
+            product: edit.draft.product,
+            branch: edit.draft.branch,
+            channel: edit.draft.channel,
+            source: edit.draft.source,
+            assignee: edit.draft.assignee,
+            stage: edit.draft.stage,
+          }
     try {
       const response = await fetch(
-        creating
-          ? collectionPath
-          : collectionPath + '/' + encodeURIComponent(edit.id),
+        creating ? editPath : editPath + '/' + encodeURIComponent(edit.id),
         {
           ...noStore,
           method: deleting ? 'DELETE' : creating ? 'POST' : 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken,
+            ...(!edit.publicEditing ? { 'X-CSRF-Token': csrfToken } : {}),
           },
           signal: AbortSignal.any([current.signal, AbortSignal.timeout(15000)]),
           body: JSON.stringify(
             deleting
               ? { version: edit.version }
               : {
-                  ...edit.draft,
+                  ...payload,
                   ...(creating ? { id: edit.id } : { version: edit.version }),
                 },
           ),
         },
       )
       if (current.signal.aborted) return
-      if (response.status === 401 || response.status === 403) {
+      if (
+        !edit.publicEditing &&
+        (response.status === 401 || response.status === 403)
+      ) {
         endSession()
         return
       }
@@ -374,14 +400,19 @@ export default function InquiryWorkspace({
       if (!isItem(item) || item.id !== edit.id) throw new Error('format')
       if (current.signal.aborted) return
       ++listRequest.current
-      setItems((records) => {
-        if (records?.some((row) => row.id === item.id))
-          return records.map((row) => (row.id === item.id ? item : row))
-        return [item, ...(records ?? [])]
-      })
+      // A staff session may have arrived during this public write. Re-read
+      // rather than letting its redacted result open as a private editor.
+      if (edit.publicEditing) setItems(null)
+      else
+        setItems((records) => {
+          if (records?.some((row) => row.id === item.id))
+            return records.map((row) => (row.id === item.id ? item : row))
+          return [item, ...(records ?? [])]
+        })
       setListError(false)
       setEdit(null)
       setNotice('문의 기록을 저장했습니다.')
+      void reloadCurrent.current()
     } catch {
       if (!current.signal.aborted)
         setProblem(
@@ -412,7 +443,7 @@ export default function InquiryWorkspace({
     if (!session.current) return
     const found = latest?.find((row) => row.id === edit.id)
     if (found) {
-      setEdit(editItem(found))
+      setEdit(editItem(found, !csrfToken))
       setConflict(false)
       setProblem('')
     } else if (latest && edit.version !== null) {
@@ -426,59 +457,47 @@ export default function InquiryWorkspace({
       className="iq-workspace"
       aria-label={csrfToken ? '문의 관리' : '문의 현황'}
     >
-      {csrfToken && listError && !items && (
-        <p className="iq-feedback" role="alert">
-          담당자 도구를 불러오지 못했습니다.{' '}
-          <button type="button" onClick={() => void load()}>
-            다시 확인
-          </button>
-        </p>
-      )}
-      {csrfToken && items ? (
-        <InquiryList
-          rows={items}
-          error={listError}
-          onRetry={() => void load()}
-          staff={{
-            rowId: (row) => row.id,
-            name: (row) => row.name,
-            adId: (row) => row.adId,
-            ads: linkedOptions,
-            notice,
-            newAction: (
-              <button
-                ref={newButton}
-                className="iq-primary"
-                type="button"
-                onClick={(e) => openEditor(e.currentTarget)}
-              >
-                <Plus size={17} aria-hidden="true" />새 문의
-              </button>
-            ),
-            editAction: (row) => (
-              <button
-                className="iq-edit"
-                type="button"
-                aria-label={[
-                  row.firstDate ?? '미확인',
-                  PRODUCT_LABELS[row.product],
-                  '문의 수정',
-                ].join(' ')}
-                onClick={(e) => openEditor(e.currentTarget, row)}
-              >
-                <Pencil size={15} aria-hidden="true" />
-                <span>수정</span>
-              </button>
-            ),
-          }}
-        />
-      ) : (
-        <InquiryList
-          rows={publicList.rows}
-          error={publicList.error}
-          onRetry={publicList.refresh}
-        />
-      )}
+      <InquiryList
+        rows={items}
+        error={listError}
+        onRetry={() => void load()}
+        controls={{
+          rowId: (row) => row.id,
+          ...(csrfToken
+            ? {
+                name: (row: Inquiry) => row.name,
+                adId: (row: Inquiry) => row.adId,
+                ads: linkedOptions,
+              }
+            : {}),
+          notice,
+          newAction: (
+            <button
+              ref={newButton}
+              className="iq-primary"
+              type="button"
+              onClick={(e) => openEditor(e.currentTarget)}
+            >
+              <Plus size={17} aria-hidden="true" />새 문의
+            </button>
+          ),
+          editAction: (row) => (
+            <button
+              className="iq-edit"
+              type="button"
+              aria-label={[
+                row.firstDate ?? '미확인',
+                PRODUCT_LABELS[row.product],
+                '문의 수정',
+              ].join(' ')}
+              onClick={(e) => openEditor(e.currentTarget, row)}
+            >
+              <Pencil size={15} aria-hidden="true" />
+              <span>수정</span>
+            </button>
+          ),
+        }}
+      />
       {edit && (
         <Dialog
           open
@@ -527,15 +546,17 @@ export default function InquiryWorkspace({
                   icon={UserRound}
                   onChange={(value) => change('assignee', value)}
                 />
-                <InquiryChoices
-                  legend="문의 대상"
-                  name="iq-customer-type"
-                  choices={customerChoices}
-                  value={edit.draft.customerType ?? ''}
-                  disabled={saving}
-                  icon={UserRound}
-                  onChange={(value) => change('customerType', value || null)}
-                />
+                {(!edit.publicEditing || edit.version === null) && (
+                  <InquiryChoices
+                    legend="문의 대상"
+                    name="iq-customer-type"
+                    choices={customerChoices}
+                    value={edit.draft.customerType ?? ''}
+                    disabled={saving}
+                    icon={UserRound}
+                    onChange={(value) => change('customerType', value || null)}
+                  />
+                )}
                 <InquiryChoices
                   legend="지점"
                   name="iq-branch"
@@ -598,39 +619,44 @@ export default function InquiryWorkspace({
                       {options(STAGE_LABELS)}
                     </select>
                   </label>
-                  {edit.draft.source === 'instagram_ad' && (
-                    <div className="iq-wide">
-                      <label>
-                        확인된 광고
-                        <select
-                          value={edit.draft.adId ?? ''}
-                          onChange={(e) =>
-                            change('adId', e.target.value || null)
-                          }
-                        >
-                          <option value="">광고 미확인</option>
-                          {edit.draft.adId && !adNames.has(edit.draft.adId) && (
-                            <option value={edit.draft.adId}>
-                              기존 연결 광고
-                            </option>
-                          )}
-                          {ads.map((ad) => (
-                            <option key={ad.id} value={ad.id}>
-                              {ad.title}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {adError && (
-                        <p className="iq-hint">
-                          광고 목록을 불러오지 못했습니다.{' '}
-                          <button type="button" onClick={() => void loadAds()}>
-                            다시 불러오기
-                          </button>
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {(!edit.publicEditing || edit.version === null) &&
+                    edit.draft.source === 'instagram_ad' && (
+                      <div className="iq-wide">
+                        <label>
+                          확인된 광고
+                          <select
+                            value={edit.draft.adId ?? ''}
+                            onChange={(e) =>
+                              change('adId', e.target.value || null)
+                            }
+                          >
+                            <option value="">광고 미확인</option>
+                            {edit.draft.adId &&
+                              !adNames.has(edit.draft.adId) && (
+                                <option value={edit.draft.adId}>
+                                  기존 연결 광고
+                                </option>
+                              )}
+                            {ads.map((ad) => (
+                              <option key={ad.id} value={ad.id}>
+                                {ad.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {adError && (
+                          <p className="iq-hint">
+                            광고 목록을 불러오지 못했습니다.{' '}
+                            <button
+                              type="button"
+                              onClick={() => void loadAds()}
+                            >
+                              다시 불러오기
+                            </button>
+                          </p>
+                        )}
+                      </div>
+                    )}
                   <label>
                     최초 문의일
                     <input
@@ -641,32 +667,36 @@ export default function InquiryWorkspace({
                       }
                     />
                   </label>
-                  <label>
-                    이름 또는 별칭
-                    <input
-                      value={edit.draft.name}
-                      maxLength={INQUIRY_LIMITS.name}
-                      onChange={(e) => change('name', e.target.value)}
-                    />
-                  </label>
-                  <label className="iq-wide">
-                    연락처
-                    <input
-                      value={edit.draft.contact}
-                      maxLength={INQUIRY_LIMITS.contact}
-                      onChange={(e) => change('contact', e.target.value)}
-                    />
-                  </label>
-                  <label className="iq-wide">
-                    상담 메모
-                    <textarea
-                      aria-label="상담 메모"
-                      rows={3}
-                      value={edit.draft.note}
-                      maxLength={INQUIRY_LIMITS.note}
-                      onChange={(e) => change('note', e.target.value)}
-                    />
-                  </label>
+                  {(!edit.publicEditing || edit.version === null) && (
+                    <>
+                      <label>
+                        이름 또는 별칭
+                        <input
+                          value={edit.draft.name}
+                          maxLength={INQUIRY_LIMITS.name}
+                          onChange={(e) => change('name', e.target.value)}
+                        />
+                      </label>
+                      <label className="iq-wide">
+                        연락처
+                        <input
+                          value={edit.draft.contact}
+                          maxLength={INQUIRY_LIMITS.contact}
+                          onChange={(e) => change('contact', e.target.value)}
+                        />
+                      </label>
+                      <label className="iq-wide">
+                        상담 메모
+                        <textarea
+                          aria-label="상담 메모"
+                          rows={3}
+                          value={edit.draft.note}
+                          maxLength={INQUIRY_LIMITS.note}
+                          onChange={(e) => change('note', e.target.value)}
+                        />
+                      </label>
+                    </>
+                  )}
                   {edit.previousAction && (
                     <dl className="iq-wide text-sm">
                       <dt className="font-semibold">

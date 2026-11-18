@@ -26,13 +26,13 @@ type ListProps<T extends InquiryListRow> = {
   rows: T[] | null
   error: boolean
   onRetry: () => void
-  staff?: {
+  controls?: {
     newAction: ReactNode
     editAction: (row: T) => ReactNode
     rowId: (row: T) => string
-    name: (row: T) => string
-    adId: (row: T) => string | null
-    ads: Map<string, string>
+    name?: (row: T) => string
+    adId?: (row: T) => string | null
+    ads?: Map<string, string>
     notice: string
   }
 }
@@ -41,21 +41,21 @@ export default function InquiryList<T extends InquiryListRow>({
   rows,
   error,
   onRetry,
-  staff,
+  controls,
 }: ListProps<T>) {
   const filterId = useId()
   const [open, setOpen] = useState(false)
   const [product, setProduct] = useState('')
   const [assignee, setAssignee] = useState('')
   const [ad, setAd] = useState('')
-  const filtered = !!(product || assignee || (staff && ad))
+  const filtered = !!(product || assignee || (controls?.adId && ad))
   const matches = rows?.filter(
     (row) =>
       (!product || row.product === product) &&
       (!assignee || row.assignee === assignee) &&
-      (!staff ||
+      (!controls?.adId ||
         !ad ||
-        (ad === 'unlinked' ? !staff.adId(row) : staff.adId(row) === ad)),
+        (ad === 'unlinked' ? !controls.adId(row) : controls.adId(row) === ad)),
   )
   return (
     <section className="iq-panel" aria-label="문의 목록">
@@ -84,7 +84,7 @@ export default function InquiryList<T extends InquiryListRow>({
               <SlidersHorizontal size={16} aria-hidden="true" />
               필터{filtered && ' 적용 중'}
             </button>
-            {staff?.newAction}
+            {controls?.newAction}
           </div>
         )}
       </header>
@@ -134,7 +134,7 @@ export default function InquiryList<T extends InquiryListRow>({
                 ))}
               </select>
             </label>
-            {staff && (
+            {controls?.ads && (
               <label>
                 연결된 광고
                 <select
@@ -144,7 +144,7 @@ export default function InquiryList<T extends InquiryListRow>({
                 >
                   <option value="">전체 광고</option>
                   <option value="unlinked">연결 안 됨</option>
-                  {[...staff.ads].map(([id, label]) => (
+                  {[...controls.ads].map(([id, label]) => (
                     <option key={id} value={id}>
                       {label}
                     </option>
@@ -162,22 +162,24 @@ export default function InquiryList<T extends InquiryListRow>({
               필터 결과 {(matches?.length ?? 0).toLocaleString('ko-KR')}건
             </p>
           )}
-          {staff?.notice && (
+          {controls?.notice && (
             <p className="iq-notice" role="status">
               <Check size={16} aria-hidden="true" />
-              {staff.notice}
+              {controls.notice}
             </p>
           )}
           {matches?.length ? (
             <InquiryTable
               caption="문의 목록 표"
-              columns={staff ? ['문의자', ...columns] : columns}
+              columns={controls?.name ? ['문의자', ...columns] : columns}
             >
               {matches.map((row, index) => (
-                <tr key={staff ? staff.rowId(row) : index}>
-                  {staff ? (
+                <tr key={controls ? controls.rowId(row) : index}>
+                  {controls?.name ? (
                     <>
-                      <th scope="row">{staff.name(row).trim() || '이름 미입력'}</th>
+                      <th scope="row">
+                        {controls.name(row).trim() || '이름 미입력'}
+                      </th>
                       <td>{row.firstDate ?? '미확인'}</td>
                     </>
                   ) : (
@@ -203,7 +205,7 @@ export default function InquiryList<T extends InquiryListRow>({
                       >
                         {row.stage ? STAGE_LABELS[row.stage] : '미확인'}
                       </span>
-                      {staff?.editAction(row)}
+                      {controls?.editAction(row)}
                     </div>
                   </td>
                 </tr>

@@ -10,7 +10,7 @@
 
 게시물·릴스 자동 수집을 사용하려면 각 계정이 비즈니스 또는 크리에이터 계정이어야 하며 계정별로 운영자의 승인이 필요합니다. 기존 대시보드의 단일 프로필 로그인과 광고 계정 조회 권한은 그대로 사용할 수 있습니다.
 
-캘린더 주소(`#calendar`)를 연 방문자는 비밀번호 없이 일정 제목·날짜와 이미 수집된 게시물·릴스를 확인할 수 있습니다. 일정 메모·편집과 계정 연결은 [등록한 운영 기기](ADMIN_ANALYTICS.md#비밀번호-없는-운영-기기)에서만 이용합니다. 사이트의 관리자 비밀번호는 방문 통계 전용입니다.
+캘린더 주소(`#calendar`)를 연 방문자는 비밀번호 없이 일정 제목·날짜와 이미 수집된 게시물·릴스를 확인하고 일반 일정을 등록·수정·삭제할 수 있습니다. 초대나 기기 연결은 필요하지 않습니다. 내부 일정 메모와 Instagram 계정 연결·게시물 링크 관리는 [등록한 운영 기기](ADMIN_ANALYTICS.md#비밀번호-없는-운영-기기)에서 이용합니다. 사이트의 관리자 비밀번호는 방문 통계 전용입니다.
 
 1. Meta 개발자 앱에서 **Instagram API with Instagram Login**을 설정합니다. 읽기에 사용하는 권한은 `instagram_business_basic`입니다. 개발 모드라면 사용할 회사 계정에 필요한 앱 역할 또는 테스터 초대 수락 상태를 확인합니다. [Meta Instagram Login 안내](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/)
 2. 앱의 Instagram 로그인 설정에 달력용 리디렉션 주소 `https://jbgolf-connection.jbgolfacademy.workers.dev/api/auth/instagram/calendar/callback`를 추가합니다. 기존 프로필 로그인 주소도 유지합니다.

@@ -430,7 +430,7 @@ export default function App() {
               {isCalendar || active === 'instagram-posts'
                 ? '한국 시간'
                 : isInquiries
-                  ? '담당자 업무공간'
+                  ? '팀 공용 업무공간'
                   : isWorkArea
                     ? '관리자 전용'
                     : isMedia

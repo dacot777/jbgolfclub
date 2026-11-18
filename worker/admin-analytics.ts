@@ -20,6 +20,9 @@ import {
   createSchedule,
   deleteSchedule,
   updateSchedule,
+  createPublicSchedule,
+  updatePublicSchedule,
+  deletePublicSchedule,
 } from './calendar-schedules'
 import {
   calendarInstagramThumbnail,
@@ -42,6 +45,9 @@ import {
   listInquiries,
   updateInquiry,
   InquiryError,
+  listPublicInquiries,
+  publicInquiryItem,
+  updatePublicInquiry,
 } from './inquiries'
 import { base64Url, equal, hash, randomSecret } from './crypto'
 import {
@@ -457,6 +463,55 @@ export async function adminAnalytics(
 ): Promise<Response> {
   try {
     const path = new URL(request.url).pathname
+    if (path === '/api/inquiries' && request.method === 'GET')
+      return json({ items: await listPublicInquiries(env) })
+    if (path === '/api/inquiries' && request.method === 'POST') {
+      sameOrigin(request, env)
+      const item = await createInquiry(
+        env,
+        await body(request, 16_384),
+        (value) => hmac(env, value),
+      )
+      return json({ item: publicInquiryItem(item) })
+    }
+    const publicInquiryPath = /^\/api\/inquiries\/([^/]+)$/.exec(path)
+    if (
+      publicInquiryPath &&
+      (request.method === 'PUT' || request.method === 'DELETE')
+    ) {
+      sameOrigin(request, env)
+      const input = await body(request, 16_384)
+      return request.method === 'PUT'
+        ? json({
+            item: await updatePublicInquiry(env, publicInquiryPath[1], input),
+          })
+        : json(await deleteInquiry(env, publicInquiryPath[1], input))
+    }
+    if (path === '/api/calendar/schedules' && request.method === 'POST') {
+      sameOrigin(request, env)
+      return json({
+        item: await createPublicSchedule(
+          env,
+          await body(request, 16_384),
+          (value) => hmac(env, value),
+        ),
+      })
+    }
+    const publicSchedulePath = /^\/api\/calendar\/schedules\/([^/]+)$/.exec(
+      path,
+    )
+    if (
+      publicSchedulePath &&
+      (request.method === 'PUT' || request.method === 'DELETE')
+    ) {
+      sameOrigin(request, env)
+      const input = await body(request, 16_384)
+      return request.method === 'PUT'
+        ? json({
+            item: await updatePublicSchedule(env, publicSchedulePath[1], input),
+          })
+        : json(await deletePublicSchedule(env, publicSchedulePath[1], input))
+    }
     if (path === '/api/admin/session' && request.method === 'GET') {
       if (!configured(env))
         return json({ authenticated: false, configured: false })
@@ -616,7 +671,8 @@ export async function adminAnalytics(
       path.startsWith('/api/admin/calendar') ||
       path.startsWith('/api/calendar/')
         ? 'calendar_unavailable'
-        : path.startsWith('/api/admin/inquiries')
+        : path.startsWith('/api/admin/inquiries') ||
+            path.startsWith('/api/inquiries')
           ? 'inquiries_unavailable'
           : path.startsWith('/api/staff/')
             ? 'staff_unavailable'

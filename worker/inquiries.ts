@@ -28,6 +28,20 @@ const emptyFields: PrivateFields = {
   note: '',
   nextAction: '',
 }
+const publicColumns =
+  'id,version,first_date AS firstDate,product,branch,channel,source,assignee,stage'
+type PublicInquiryRow = Pick<
+  Inquiry,
+  | 'id'
+  | 'version'
+  | 'firstDate'
+  | 'product'
+  | 'branch'
+  | 'channel'
+  | 'source'
+  | 'assignee'
+  | 'stage'
+>
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 
 export class InquiryError extends Error {
@@ -137,6 +151,77 @@ export async function listInquiries(env: Env): Promise<Inquiry[]> {
     `SELECT ${columns} FROM inquiries ORDER BY created_at DESC,rowid DESC`,
   ).all<InquiryRow>()
   return Promise.all(results.map((row) => itemFrom(row, env)))
+}
+
+// Only the agreed shared fields are readable without a staff session. Creation
+// retries also pass through this projection, even after a private staff edit.
+export function publicInquiryItem(item: PublicInquiryRow): Inquiry {
+  return {
+    id: item.id,
+    version: item.version,
+    firstDate: item.firstDate,
+    product: item.product,
+    branch: item.branch,
+    channel: item.channel,
+    source: item.source,
+    assignee: item.assignee,
+    stage: item.stage,
+    adId: null,
+    customerType: null,
+    ...emptyFields,
+  }
+}
+
+export async function listPublicInquiries(env: Env): Promise<Inquiry[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT ${publicColumns} FROM inquiries ORDER BY created_at DESC,rowid DESC`,
+  ).all<PublicInquiryRow>()
+  return results.map(publicInquiryItem)
+}
+
+export async function updatePublicInquiry(
+  env: Env,
+  idValue: string,
+  raw: Record<string, unknown>,
+) {
+  const id = idFrom(idValue)
+  const version = versionFrom(raw.version)
+  // Ignore private input on a shared edit; omitted/redacted fields must never
+  // replace the encrypted original, including its legacy next action.
+  const input = inputFrom({
+    ...raw,
+    ...emptyFields,
+    adId: null,
+    customerType: null,
+  })
+  const updated = await env.DB.prepare(
+    `UPDATE inquiries SET first_date=?,product=?,branch=CASE WHEN ? THEN ? ELSE branch END,
+      channel=?,source=?,assignee=?,stage=?,
+      ad_id=CASE WHEN ?='instagram_ad' THEN ad_id ELSE NULL END,version=version+1
+      WHERE id=? AND version=? RETURNING ${publicColumns}`,
+  )
+    .bind(
+      input.firstDate,
+      input.product,
+      Number(raw.branch !== undefined),
+      input.branch,
+      input.channel,
+      input.source,
+      input.assignee,
+      input.stage,
+      input.source,
+      id,
+      version,
+    )
+    .first<PublicInquiryRow>()
+  if (updated) return publicInquiryItem(updated)
+  const exists = await env.DB.prepare('SELECT 1 FROM inquiries WHERE id=?')
+    .bind(id)
+    .first()
+  throw new InquiryError(
+    exists ? 'inquiry_conflict' : 'inquiry_not_found',
+    exists ? 409 : 404,
+  )
 }
 
 function displayCategory<T extends string>(
