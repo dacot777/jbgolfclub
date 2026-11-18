@@ -3,6 +3,17 @@ import { ConnectionError } from './types'
 import { reviewedPerformance } from './reviewed-performance'
 import { mediaFeed } from './media-feed'
 import { adminAnalytics, cleanupAnalytics } from './admin-analytics'
+import { cleanupStaffAccess } from './staff-access'
+import { publicCalendar, PUBLIC_THUMBNAIL_PATH } from './public-calendar'
+import { publicInquiryList, publicInquirySummary } from './inquiries'
+import { collectMetaAds, readPublicMetaAds } from './meta-ads'
+import { readMetaLifetime } from './meta-lifetime'
+import { getMetaAdThumbnail } from './meta-ad-assets'
+import {
+  CALENDAR_INSTAGRAM_CALLBACK,
+  calendarInstagramCallback,
+  syncCalendarInstagram,
+} from './calendar-instagram'
 import {
   authorizationUrl,
   configuration,
@@ -241,6 +252,11 @@ async function deletion(request: Request, env: Env) {
     .bind(userId, userId, userId)
     .first<{ user_id: string }>()
   if (account) await clearConnection(env, account.user_id)
+  await env.DB.prepare(
+    'DELETE FROM calendar_instagram_accounts WHERE user_id=? OR oauth_user_id=? OR app_scoped_id=?',
+  )
+    .bind(userId, userId, userId)
+    .run()
   const code = crypto.randomUUID()
   await env.DB.prepare(
     'INSERT INTO deletion_confirmations(code,created_at) VALUES (?,?)',
@@ -256,10 +272,44 @@ async function api(request: Request, env: Env) {
   const path = new URL(request.url).pathname
   if (request.method === 'OPTIONS')
     throw new ConnectionError('origin_not_allowed', 403)
-  if (path.startsWith('/api/admin/') || path === '/api/analytics/event')
+  if (path === '/api/inquiries/summary' && request.method === 'GET')
+    return publicInquirySummary(env.DB)
+  if (path === '/api/inquiries/list' && request.method === 'GET')
+    return publicInquiryList(env.DB)
+  if (
+    path === '/api/inquiries' ||
+    (path.startsWith('/api/inquiries/') &&
+      path !== '/api/inquiries/summary' &&
+      path !== '/api/inquiries/list') ||
+    path === '/api/calendar/schedules' ||
+    path.startsWith('/api/calendar/schedules/')
+  )
+    return adminAnalytics(request, env)
+  if (
+    path === '/api/calendar' ||
+    path === '/api/calendar/posts' ||
+    path.startsWith(PUBLIC_THUMBNAIL_PATH)
+  )
+    return publicCalendar(request, env, path)
+  if (
+    path.startsWith('/api/staff/') ||
+    path.startsWith('/api/admin/') ||
+    path === '/api/analytics/event' ||
+    path === '/api/calendar/view' ||
+    path.startsWith('/api/calendar/view/thumbnail/')
+  )
     return adminAnalytics(request, env)
   if (path === '/api/performance' && request.method === 'GET')
     return reviewedPerformance(env.DB)
+  if (path === '/api/meta-ads' && request.method === 'GET')
+    return json(await readPublicMetaAds(env))
+  if (path === '/api/meta-ads/lifetime' && request.method === 'GET')
+    return json(await readMetaLifetime(env))
+  if (path.startsWith('/api/meta-ads/thumbnail/') && request.method === 'GET')
+    return getMetaAdThumbnail(
+      env,
+      path.slice('/api/meta-ads/thumbnail/'.length),
+    )
   if (path === '/api/media' && request.method === 'GET')
     return mediaFeed(request, env.DB)
   if (path === '/api/connection' && request.method === 'GET')
@@ -268,6 +318,8 @@ async function api(request: Request, env: Env) {
     return start(request, env)
   if (path === '/api/auth/instagram/callback' && request.method === 'GET')
     return callback(request, env)
+  if (path === CALENDAR_INSTAGRAM_CALLBACK && request.method === 'GET')
+    return calendarInstagramCallback(request, env)
   if (
     (path === '/api/data-deletion' ||
       path === '/api/auth/instagram/deauthorize') &&
@@ -385,7 +437,17 @@ export default {
     secured.headers.set('X-Frame-Options', 'DENY')
     return secured
   },
-  async scheduled(_event: unknown, env: Env) {
-    await Promise.allSettled([cleanupAnalytics(env), maintainConnection(env)])
+  async scheduled(event: { cron: string }, env: Env) {
+    if (event.cron === '15 * * * *') {
+      await collectMetaAds(env)
+    } else if (event.cron === '45 * * * *') {
+      await syncCalendarInstagram(env)
+    } else if (event.cron === '0 0 * * *') {
+      await Promise.allSettled([
+        cleanupAnalytics(env),
+        cleanupStaffAccess(env),
+        maintainConnection(env),
+      ])
+    }
   },
 }

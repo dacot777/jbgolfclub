@@ -8,6 +8,7 @@ export const COMPANY_MEDIA_KEYWORDS = [
   'JB골프아카데미',
   'JB GOLF ACADEMY',
   'JB ACADEMY',
+  'JB 골프클럽',
 ] as const
 export type MediaKind = 'news' | 'blog'
 export type MediaItem = {

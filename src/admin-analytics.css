@@ -55,7 +55,7 @@
 .admin-login-card input {
   min-height: 46px;
   padding: 10px 12px;
-  border: 1px solid #bdcbb7;
+  border: 1px solid #b8b8bf;
   border-radius: 7px;
   background: #fff;
   font: inherit;
@@ -108,8 +108,8 @@
   display: flex;
   gap: 9px;
   align-items: flex-start;
-  border: 1px solid #dbe5d3;
-  background: #eef3e7;
+  border: 1px solid var(--border);
+  background: var(--muted);
   padding: 14px 17px;
   border-radius: 8px;
   color: var(--muted-foreground);
@@ -140,7 +140,7 @@
   min-width: 170px;
   min-height: 44px;
   padding: 9px 11px;
-  border: 1px solid #c4d0bf;
+  border: 1px solid #b8b8bf;
   border-radius: 6px;
   font: inherit;
   font-size: 13px;

@@ -15,9 +15,11 @@ import { COMPANY_INSTAGRAM } from '@/lib/company-instagram'
 export function InstagramConnectPanel({
   model,
   onSample,
+  onReport,
 }: {
   model: InstagramConnectionModel
   onSample: () => void
+  onReport: () => void
 }) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const { enabled, status, loading, error, busy } = model
@@ -70,13 +72,13 @@ export function InstagramConnectPanel({
               </strong>
             </p>
             <p>
-              <span>광고 실적 조회 권한</span>
-              <strong className="pending-access">별도 설정 필요</strong>
+              <span>광고 실적 확인</span>
+              <strong>광고별 상세 실적</strong>
             </p>
           </div>
           <p className="connection-explanation">
-            인스타그램 계정은 연결되었습니다. 광고비와 캠페인 실적은 광고 계정의
-            조회 권한을 별도로 연결한 뒤 표시합니다.
+            인스타그램 프로필이 연결되었습니다. 광고 실적은 각 게시물의 상세
+            카드에서 확인할 수 있습니다.
           </p>
           {connected.refreshWarning && (
             <p className="connection-warning" role="status">
@@ -166,8 +168,9 @@ export function InstagramConnectPanel({
           )}
           <p className="connection-warning">
             <CircleAlert size={17} aria-hidden="true" />
-            인스타그램 로그인만으로 광고비 조회 권한이 생기지는 않습니다. 광고
-            계정 권한은 다음 단계에서 별도로 연결합니다.
+            인스타그램 로그인만으로 광고비 조회 권한이 생기지는 않습니다.
+            {enabled &&
+              ' 집행한 광고의 수치는 광고별 상세 실적에서 확인하세요.'}
           </p>
           <Button variant="outline" onClick={onSample}>
             <Eye aria-hidden="true" />
@@ -181,6 +184,9 @@ export function InstagramConnectPanel({
       </p>
       {enabled && (
         <div className="connection-legal">
+          <a href="#campaigns" onClick={onReport}>
+            광고별 상세 실적
+          </a>
           <a href="/privacy" target="_blank" rel="noreferrer">
             개인정보 처리 안내
           </a>

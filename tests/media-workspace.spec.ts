@@ -32,8 +32,8 @@ function feed(kind: MediaKind, overrides: Partial<MediaFeed> = {}): MediaFeed {
     checkedAt: '2026-11-06T01:00:00Z',
     status: 'fresh',
     refreshing: false,
-    successfulQueries: 9,
-    totalQueries: 9,
+    successfulQueries: COMPANY_MEDIA_KEYWORDS.length,
+    totalQueries: COMPANY_MEDIA_KEYWORDS.length,
     ...overrides,
   }
 }
@@ -84,9 +84,10 @@ test('기사에 들어가면 자동 조회하고 언론사·키워드·사진을
   ).toBeVisible()
   await expect(page.locator('.media-card')).toHaveCount(4)
   expect(requests.length).toBe(1)
-  await expect(
-    page.getByRole('list', { name: '모니터링 키워드' }).locator('li'),
-  ).toHaveCount(9)
+  const keywords = page.getByRole('list', { name: '모니터링 키워드' })
+  await expect(keywords.locator('li')).toHaveCount(COMPANY_MEDIA_KEYWORDS.length)
+  await expect(keywords.getByText('JB골프클럽', { exact: true })).toBeVisible()
+  await expect(keywords.getByText('JB 골프클럽', { exact: true })).toBeVisible()
   await expect(page.locator('.media-publisher').first()).toContainText(
     '검증일보',
   )
@@ -151,6 +152,11 @@ test('개인 후기 블로그와 작성자를 표시하고 메뉴 재진입 때 
     }),
   ).toBeVisible()
   await expect(page.getByText('주말골퍼', { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: '모니터링 키워드' })
+      .getByText('JB 골프클럽', { exact: true }),
+  ).toBeVisible()
   await expect(page.locator('.media-publisher')).toContainText('네이버 블로그')
   expect(counts.blog).toBe(1)
   await page.getByRole('link', { name: '기사', exact: true }).click()
@@ -182,17 +188,20 @@ test('키워드 확인이 계속되면 기존 글을 보여주면서 별도조�
           : {
               items: [item(1), item(2)],
               refreshing: false,
-              successfulQueries: 9,
+              successfulQueries: COMPANY_MEDIA_KEYWORDS.length,
             },
       ),
     })
   })
   await page.goto('/#news')
   await expect(page.locator('.media-card')).toHaveCount(1)
-  await expect(page.getByText('키워드 확인 중 · 1/9')).toBeVisible()
+  const progress = page.getByText(
+    `키워드 확인 중 · 1/${COMPANY_MEDIA_KEYWORDS.length}`,
+  )
+  await expect(progress).toBeVisible()
   await expect(page.locator('.media-card')).toHaveCount(2)
   expect(calls).toBe(2)
-  await expect(page.getByText('키워드 확인 중 · 1/9')).toHaveCount(0)
+  await expect(progress).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: /갱신|새로고침|업데이트|다시/ }),
   ).toHaveCount(0)
@@ -239,7 +248,7 @@ test('검색 결과없음과 연결실패를 구분하고 가짜 게시물·갱�
       json: feed(kind, {
         items: [],
         status: kind === 'news' ? 'fresh' : 'unavailable',
-        successfulQueries: kind === 'news' ? 9 : 0,
+        successfulQueries: kind === 'news' ? COMPANY_MEDIA_KEYWORDS.length : 0,
       }),
     })
   })

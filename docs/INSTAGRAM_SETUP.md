@@ -1,6 +1,26 @@
-# 인스타그램 계정 한 개 연결 준비
+# Instagram 프로필 연결과 콘텐츠 달력
 
-## 이번 단계의 범위
+## 콘텐츠 달력에 게시물 불러오기
+
+워크스페이스의 **인스타 게시물 모아보기**(`#instagram-posts`)를 열면 `jbgolfacademy`, `jbgolfclub_official`, `jbgolfclub_bundang`의 공식 Instagram 프로필 미리보기를 불러옵니다. 회사 계정을 사이트에 연결하기 전에도 공개 썸네일을 눌러 게시물 원문을 열 수 있습니다. 각 계정의 공개 설정과 Instagram의 표시 정책이 미리보기 구성을 결정합니다. 계정별 원문, 릴스, 네이버 검색 링크도 이용할 수 있습니다.
+
+모아보기는 세 계정의 전체 피드로 열립니다. 달력에서 특정 달을 열면 담당자가 게시일을 확인해 등록한 원문과 승인된 계정에서 발행 시각을 수집한 게시물을 볼 수 있습니다.
+
+운영 기기에서 **게시물 링크 등록**을 열고 계정, 게시일, 제목과 Instagram 원문 주소를 저장하면 해당 날짜에서 바로 열립니다. 원문 주소에서 추적용 매개변수를 제거하며, 같은 콘텐츠를 공식 API에서도 읽으면 공식 발행 날짜와 썸네일을 사용합니다. 공개 일정에는 메모가 포함되지 않습니다.
+
+게시물·릴스 자동 수집을 사용하려면 각 계정이 비즈니스 또는 크리에이터 계정이어야 하며 계정별로 운영자의 승인이 필요합니다. 기존 대시보드의 단일 프로필 로그인과 광고 계정 조회 권한은 그대로 사용할 수 있습니다.
+
+캘린더 주소(`#calendar`)를 연 방문자는 비밀번호 없이 일정 제목·날짜와 이미 수집된 게시물·릴스를 확인하고 일반 일정을 등록·수정·삭제할 수 있습니다. 초대나 기기 연결은 필요하지 않습니다. 내부 일정 메모와 Instagram 계정 연결·게시물 링크 관리는 [등록한 운영 기기](ADMIN_ANALYTICS.md#비밀번호-없는-운영-기기)에서 이용합니다. 사이트의 관리자 비밀번호는 방문 통계 전용입니다.
+
+1. Meta 개발자 앱에서 **Instagram API with Instagram Login**을 설정합니다. 읽기에 사용하는 권한은 `instagram_business_basic`입니다. 개발 모드라면 사용할 회사 계정에 필요한 앱 역할 또는 테스터 초대 수락 상태를 확인합니다. [Meta Instagram Login 안내](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/)
+2. 앱의 Instagram 로그인 설정에 달력용 리디렉션 주소 `https://jbgolf-connection.jbgolfacademy.workers.dev/api/auth/instagram/calendar/callback`를 추가합니다. 기존 프로필 로그인 주소도 유지합니다.
+3. Cloudflare의 **Workers & Pages → jbgolf-connection → Settings → Variables and Secrets → Production**에서 Instagram 제품의 앱 ID를 `INSTAGRAM_APP_ID` 변수에, 해당 Instagram 앱 비밀키를 `INSTAGRAM_APP_SECRET` Secret에 설정합니다. 기존 암호화 키는 계속 사용합니다.
+4. 등록한 운영 기기에서 **인스타 게시물 모아보기 → 계정 관리**를 열고 각 계정 옆의 **연결**을 누른 뒤 같은 브라우저에서 Instagram 승인을 완료합니다. 서버가 사용자 이름과 계정 ID를 확인하고 계정별 토큰을 암호화합니다.
+5. 승인 직후 실제 게시물 첫 페이지를 조회합니다. 이후 매시 45분에 최신 게시물을 갱신하고 매번 과거 기록을 한 페이지씩 채웁니다. 최초 수집 범위가 완성될 때까지 동기화 상태가 표시됩니다. 게시 시각은 한국시간입니다. 이미지 또는 표지 URL이 제공되지 않은 콘텐츠는 원문 링크와 함께 표시합니다. [Instagram 미디어 필드](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/)
+
+일정은 운영자가 달력에 입력하는 작업 계획입니다. Instagram에 직접 예약한 콘텐츠는 발행 후 API에 나타날 때 가져옵니다. Instagram에서 앱 권한을 철회하거나 데이터 삭제를 요청하면 서명된 알림을 확인한 후 해당 계정의 달력 인증 정보와 수집 게시물을 삭제합니다. 운영자가 입력한 일정은 별도로 보관합니다.
+
+## 기존 단일 프로필 연결 범위
 
 연결 대상으로 지정된 계정: **[@jbgolfacademy](https://www.instagram.com/jbgolfacademy/)**. 사용자가 제공한 공개 계정 주소이며 실제 로그인 승인은 아직 완료되지 않았습니다. 배포한 서버의 허용 계정에 이 이름을 반영했습니다.
 

@@ -1,28 +1,16 @@
-# JB Golf dashboard design
+# JB Golf workspace design
 
-## Direction
+The supplied [Apple reference](../DESIGN.md) guides the site. A compact black navigation bar, a white context strip and a centered content column accompany the original JB Academy shield. The surface is #f5f5f7, cards are white with 18px corners, body text is #1d1d1f, and controls use #0066cc with a #0071e3 focus outline. System fonts and locally hosted Korean type keep text readable without external font requests. Status colors keep their delivery or warning meaning.
 
-A quiet, refined golf editorial language applied to a work dashboard. The page leads with the weekly report, then spend/reach/impressions/clicks, comparable weekly trends, monthly totals and objective-specific details. The dark forest-green sidebar and report panel retain the existing published draft’s visual identity.
+Give mobile and desktop users the same data and actions for their access level. Use wrapping, local scrolling or expandable navigation so that narrow screens can reach every item.
 
-UI/UX Pro Max searches returned a relevant **Data-Dense Dashboard** style and **Trend Over Time / Line Chart** guidance. Its generated enterprise sales landing pattern was off-topic even after a narrower retry; it was not adopted or saved as a verified product pattern. The following is a project-specific synthesis of the verified chart/accessibility guidance and existing JB Golf palette.
+## Content calendar
 
-## Semantic tokens
+The public calendar shows dates and schedules with text labels and distinct colors for brands and branches. Anyone with the site address can create, edit and delete ordinary schedules without an invitation or device registration. Select JB골프클럽, JB아카데미 or 하우스 오브 제이비 when creating a schedule. Club schedules also require 청담 or 서현. Published posts can appear as date context. The separate Instagram collection groups posts and reels across the three approved accounts and provides links to the original content, public search and account setup. Private schedule notes and existing customer details require a registered staff browser.
 
-| Role | Value |
-| --- | --- |
-| background | #f6f7f4 |
-| surface | #ffffff |
-| foreground | #27372d |
-| primary | #204f3d |
-| sidebar / report | #173e30 |
-| accent | #d2ed9e |
-| muted foreground | #66746b |
-| border | #e3e8df |
-| current chart line | #315f45 |
-| previous chart line | #7b8a7e, dashed |
-| monthly spend bar | #7f9965 |
+## Inquiry list
 
-Typography uses locally served DM Sans Variable and Noto Sans KR Variable with tabular figures. Korean paragraphs retain natural wrapping. Font licenses are included. Component spacing follows a 4/8px rhythm; primary cards use 10–13px radii and restrained shadows.
+PC and mobile use one table with the same column headings, ordering, counts and one row per inquiry. On smaller screens the table scrolls horizontally inside its panel. Anyone with the address can create inquiries and edit the seven public fields or delete a record. Existing customer details remain available in the staff view. New inquiry private fields are encrypted server-side and never returned to anonymous clients. Public updates preserve existing private fields. Both workspaces refresh while visible and when returning to the page, without replacing an open draft; stale versions require reviewing the latest record before saving.
 
 ## States and data
 

@@ -9,6 +9,9 @@ export interface Env {
   INSTAGRAM_ACCOUNT_USERNAME: string
   INSTAGRAM_API_VERSION: string
   TOKEN_ENCRYPTION_KEY: string
+  META_AD_ACCOUNT_ID?: string
+  META_ADS_API_VERSION?: string
+  META_ADS_ACCESS_TOKEN?: string
   ADMIN_PASSWORD_VERIFIER?: string
   ADMIN_ANALYTICS_KEY?: string
 }

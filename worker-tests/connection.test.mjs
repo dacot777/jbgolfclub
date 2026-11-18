@@ -16,10 +16,13 @@ const bundle = await build({
   target: 'es2022',
   write: false,
 })
-const migration = await readFile(
-  'worker/migrations/0001_single_instagram.sql',
-  'utf8',
-)
+const migration = (
+  await Promise.all(
+    ['0001_single_instagram.sql', '0011_calendar_instagram.sql'].map((name) =>
+      readFile('worker/migrations/' + name, 'utf8'),
+    ),
+  )
+).join('\n')
 
 test('큰 숫자 ID를 반올림하지 않고 OAuth ID의 삭제 알림도 같은 계정으로 처리한다', async () => {
   const f = await fixture()

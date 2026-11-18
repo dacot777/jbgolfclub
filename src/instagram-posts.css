@@ -1,0 +1,180 @@
+.ig-feed > h2 {
+  margin: 20px 0 16px;
+  color: var(--cc-ink);
+  font-size: clamp(19px, 2.4vw, 24px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.ig-feeds {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.ig-account {
+  min-width: 0;
+  padding: clamp(12px, 1.3vw, 20px);
+  background: #fff;
+  border: 1px solid var(--cc-border);
+  border-radius: 18px;
+}
+.ig-account-head {
+  padding: 0 0 12px;
+}
+.ig-account-head h3 {
+  margin: 0;
+  color: var(--cc-ink);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.ig-account-head span,
+.ig-caption p,
+.ig-feedback {
+  color: var(--cc-secondary);
+}
+.ig-account-head span {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.ig-profile-preview {
+  container-type: inline-size;
+  width: min(100%, 480px);
+}
+.ig-profile-preview iframe {
+  display: block;
+  width: 100%;
+  height: calc(66.67cqi + 236px);
+  border: 0;
+  background: white;
+}
+.ig-originals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+  margin-top: 4px;
+}
+.ig-originals a,
+.ig-gallery .ig-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 44px;
+  color: var(--cc-blue);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+}
+.ig-originals a {
+  text-decoration: none;
+}
+.ig-originals a:hover {
+  text-decoration: underline;
+}
+.ig-feedback {
+  margin: 8px 0 16px;
+  font-size: 14px;
+}
+.ig-saved-heading {
+  margin: 10px 0 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cc-border);
+  font-size: 14px;
+  font-weight: 650;
+}
+.ig-post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ig-publication {
+  min-width: 0;
+  align-self: start;
+}
+.ig-publication > a {
+  display: block;
+  border-radius: 9px;
+  color: var(--cc-ink);
+  text-decoration: none;
+}
+.ig-publication > a:hover h4 {
+  color: var(--cc-blue);
+}
+.ig-image {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--cc-paper);
+}
+.ig-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ig-no-image {
+  display: grid;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  color: var(--cc-secondary);
+  font-size: 12px;
+}
+.ig-kind {
+  position: absolute;
+  inset: 6px auto auto 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 99px;
+  padding: 3px 7px;
+  background: rgb(255 255 255 / 95%);
+  color: var(--cc-ink);
+  font-size: 12px;
+}
+.ig-caption {
+  padding: 8px 0;
+}
+.ig-caption p {
+  margin: 0 0 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ig-caption h4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ig-gallery .ig-edit {
+  border: 0;
+  background: transparent;
+}
+@container calendar (min-width: 820px) {
+  .ig-feeds {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ig-feeds .ig-post-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container calendar (max-width:480px) {
+  .ig-post-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container calendar (max-width:275px) {
+  .ig-post-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,4 +1,54 @@
 import type { Env } from './types'
+import {
+  PrivateRequestError as AnalyticsError,
+  json,
+  empty,
+  cookie,
+  readCookie,
+  sameOrigin,
+  body,
+} from './private-request'
+import {
+  requireStaff,
+  requireStaffMutation,
+  staffSession,
+  staffAccess,
+} from './staff-access'
+import { readMetaAds } from './meta-ads'
+import {
+  CalendarError,
+  createSchedule,
+  deleteSchedule,
+  updateSchedule,
+  createPublicSchedule,
+  updatePublicSchedule,
+  deletePublicSchedule,
+} from './calendar-schedules'
+import {
+  calendarInstagramThumbnail,
+  startCalendarInstagram,
+} from './calendar-instagram'
+import { loadCalendarMonth, readOnlyCalendarMonth } from './public-calendar'
+import { latestCalendarPublications } from './calendar-gallery'
+import {
+  calendarShareStatus,
+  rotateCalendarShare,
+  revokeCalendarShare,
+  validateCalendarShare,
+  thumbnailCookie,
+  THUMBNAIL_COOKIE,
+  SHARED_THUMBNAIL_PATH,
+} from './calendar-share'
+import {
+  createInquiry,
+  deleteInquiry,
+  listInquiries,
+  updateInquiry,
+  InquiryError,
+  listPublicInquiries,
+  publicInquiryItem,
+  updatePublicInquiry,
+} from './inquiries'
 import { base64Url, equal, hash, randomSecret } from './crypto'
 import {
   ANALYTICS_MENUS,
@@ -14,7 +64,6 @@ const VISITOR_COOKIE = '__Host-jbgolf_visitor'
 const DAY = 86_400_000
 const ADMIN_TTL = 8 * 3_600_000
 const RATE_WINDOW = 15 * 60_000
-const BODY_LIMIT = 2048
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TOKEN = /^[A-Za-z0-9_-]{43}$/
 type AdminRow = { session_hash: string; csrf_token: string; expires_at: number }
@@ -37,14 +86,6 @@ type ViewRow = {
   last_seq: number
   is_active: number
 }
-class AnalyticsError extends Error {
-  constructor(
-    public code: string,
-    public status: number,
-  ) {
-    super(code)
-  }
-}
 const encoder = new TextEncoder()
 const timestamp = (value: number) => new Date(value).toISOString()
 
@@ -55,81 +96,6 @@ function configured(env: Env) {
     env.ADMIN_ANALYTICS_KEY.length >= 32 &&
     /^v1\$[a-f0-9]{32}\$[a-f0-9]{64}$/.test(env.ADMIN_PASSWORD_VERIFIER ?? '')
   )
-}
-function json(value: unknown, status = 200, cookie?: string) {
-  const headers = new Headers({
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store, private',
-    Pragma: 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-  })
-  if (cookie) headers.set('Set-Cookie', cookie)
-  return new Response(JSON.stringify(value), { status, headers })
-}
-function empty(cookie?: string) {
-  const headers = new Headers({ 'Cache-Control': 'no-store, private' })
-  if (cookie) headers.set('Set-Cookie', cookie)
-  return new Response(null, { status: 204, headers })
-}
-function cookie(name: string, value: string, seconds: number, strict = true) {
-  return `${name}=${value}; HttpOnly; Secure; SameSite=${strict ? 'Strict' : 'Lax'}; Path=/; Max-Age=${seconds}`
-}
-function readCookie(request: Request, name: string) {
-  return (
-    (request.headers.get('Cookie') ?? '')
-      .split(';')
-      .map((value) => value.trim())
-      .find((value) => value.startsWith(name + '='))
-      ?.slice(name.length + 1) ?? ''
-  )
-}
-function sameOrigin(request: Request, env: Env) {
-  if (
-    new URL(request.url).origin !== env.APP_ORIGIN ||
-    request.headers.get('Origin') !== env.APP_ORIGIN ||
-    request.headers.get('Sec-Fetch-Site') === 'cross-site'
-  )
-    throw new AnalyticsError('origin_not_allowed', 403)
-}
-async function body(request: Request): Promise<Record<string, unknown>> {
-  if (
-    request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !==
-    'application/json'
-  )
-    throw new AnalyticsError('invalid_request', 400)
-  if (
-    Number(request.headers.get('Content-Length') ?? 0) > BODY_LIMIT ||
-    !request.body
-  )
-    throw new AnalyticsError('invalid_request', 400)
-  const reader = request.body.getReader()
-  const chunks: Uint8Array[] = []
-  let length = 0
-  while (true) {
-    const part = await reader.read()
-    if (part.done) break
-    length += part.value.length
-    if (length > BODY_LIMIT) {
-      await reader.cancel()
-      throw new AnalyticsError('invalid_request', 400)
-    }
-    chunks.push(part.value)
-  }
-  const combined = new Uint8Array(length)
-  let offset = 0
-  for (const chunk of chunks) {
-    combined.set(chunk, offset)
-    offset += chunk.length
-  }
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(combined))
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-      throw new Error()
-    return parsed
-  } catch {
-    throw new AnalyticsError('invalid_request', 400)
-  }
 }
 async function hexHash(value: string) {
   return Array.from(
@@ -169,6 +135,13 @@ async function adminSession(
 async function requireAdmin(request: Request, env: Env) {
   const session = await adminSession(request, env)
   if (!session) throw new AnalyticsError('authentication_required', 401)
+  return session
+}
+async function requireAdminMutation(request: Request, env: Env) {
+  sameOrigin(request, env)
+  const session = await requireAdmin(request, env)
+  if (!equal(request.headers.get('X-CSRF-Token') ?? '', session.csrf_token))
+    throw new AnalyticsError('invalid_csrf', 403)
   return session
 }
 async function visitor(
@@ -311,7 +284,8 @@ async function collect(request: Request, env: Env) {
   )
     return empty()
   const event = eventInput(await body(request))
-  if (await adminSession(request, env)) return empty()
+  if ((await adminSession(request, env)) || (await staffSession(request, env)))
+    return empty()
   const identity = await visitor(request, env)
   const owner = await env.DB.prepare(
     'SELECT is_owner FROM analytics_visitors WHERE id=?',
@@ -489,6 +463,55 @@ export async function adminAnalytics(
 ): Promise<Response> {
   try {
     const path = new URL(request.url).pathname
+    if (path === '/api/inquiries' && request.method === 'GET')
+      return json({ items: await listPublicInquiries(env) })
+    if (path === '/api/inquiries' && request.method === 'POST') {
+      sameOrigin(request, env)
+      const item = await createInquiry(
+        env,
+        await body(request, 16_384),
+        (value) => hmac(env, value),
+      )
+      return json({ item: publicInquiryItem(item) })
+    }
+    const publicInquiryPath = /^\/api\/inquiries\/([^/]+)$/.exec(path)
+    if (
+      publicInquiryPath &&
+      (request.method === 'PUT' || request.method === 'DELETE')
+    ) {
+      sameOrigin(request, env)
+      const input = await body(request, 16_384)
+      return request.method === 'PUT'
+        ? json({
+            item: await updatePublicInquiry(env, publicInquiryPath[1], input),
+          })
+        : json(await deleteInquiry(env, publicInquiryPath[1], input))
+    }
+    if (path === '/api/calendar/schedules' && request.method === 'POST') {
+      sameOrigin(request, env)
+      return json({
+        item: await createPublicSchedule(
+          env,
+          await body(request, 16_384),
+          (value) => hmac(env, value),
+        ),
+      })
+    }
+    const publicSchedulePath = /^\/api\/calendar\/schedules\/([^/]+)$/.exec(
+      path,
+    )
+    if (
+      publicSchedulePath &&
+      (request.method === 'PUT' || request.method === 'DELETE')
+    ) {
+      sameOrigin(request, env)
+      const input = await body(request, 16_384)
+      return request.method === 'PUT'
+        ? json({
+            item: await updatePublicSchedule(env, publicSchedulePath[1], input),
+          })
+        : json(await deletePublicSchedule(env, publicSchedulePath[1], input))
+    }
     if (path === '/api/admin/session' && request.method === 'GET') {
       if (!configured(env))
         return json({ authenticated: false, configured: false })
@@ -503,18 +526,135 @@ export async function adminAnalytics(
           : { authenticated: false, configured: true },
       )
     }
-    if (!configured(env)) throw new AnalyticsError('admin_not_configured', 503)
+    if (path.startsWith('/api/staff/')) return await staffAccess(request, env)
+    if (
+      [
+        '/api/admin/login',
+        '/api/admin/logout',
+        '/api/admin/analytics',
+        '/api/analytics/event',
+      ].includes(path) &&
+      !configured(env)
+    )
+      throw new AnalyticsError('admin_not_configured', 503)
     if (path === '/api/admin/login' && request.method === 'POST')
       return await login(request, env)
     if (path === '/api/admin/logout' && request.method === 'POST') {
-      sameOrigin(request, env)
-      const session = await requireAdmin(request, env)
-      if (!equal(request.headers.get('X-CSRF-Token') ?? '', session.csrf_token))
-        throw new AnalyticsError('invalid_csrf', 403)
+      const session = await requireAdminMutation(request, env)
       await env.DB.prepare('DELETE FROM admin_sessions WHERE session_hash=?')
         .bind(session.session_hash)
         .run()
       return json({ authenticated: false }, 200, cookie(ADMIN_COOKIE, '', 0))
+    }
+    if (path === '/api/admin/calendar' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json(await loadCalendarMonth(request, env))
+    }
+    if (path === '/api/admin/calendar/posts' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json(await latestCalendarPublications(env, true))
+    }
+    if (path === '/api/admin/calendar/share' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json(await calendarShareStatus(env))
+    }
+    if (
+      path === '/api/admin/calendar/share' &&
+      (request.method === 'POST' || request.method === 'DELETE')
+    ) {
+      await requireStaffMutation(request, env)
+      return json(
+        request.method === 'POST'
+          ? await rotateCalendarShare(env)
+          : await revokeCalendarShare(env),
+      )
+    }
+    if (path === '/api/calendar/view' && request.method === 'GET') {
+      const token =
+        /^Bearer ([A-Za-z0-9_-]{43})$/.exec(
+          request.headers.get('Authorization') ?? '',
+        )?.[1] ?? ''
+      const expiresAt = await validateCalendarShare(env, token)
+      return json(
+        await readOnlyCalendarMonth(request, env, SHARED_THUMBNAIL_PATH),
+        200,
+        thumbnailCookie(token, expiresAt),
+      )
+    }
+    const sharedThumbnail = /^\/api\/calendar\/view\/thumbnail\/(\d+)$/.exec(
+      path,
+    )
+    if (sharedThumbnail && request.method === 'GET') {
+      await validateCalendarShare(env, readCookie(request, THUMBNAIL_COOKIE))
+      return await calendarInstagramThumbnail(env, sharedThumbnail[1])
+    }
+    const profileConnect =
+      /^\/api\/admin\/calendar\/instagram\/connect\/([^/]+)$/.exec(path)
+    if (profileConnect && request.method === 'POST') {
+      const session = await requireStaffMutation(request, env)
+      return await startCalendarInstagram(
+        env,
+        profileConnect[1],
+        session.session_hash,
+      )
+    }
+    const thumbnail =
+      /^\/api\/admin\/calendar\/instagram\/thumbnail\/(\d+)$/.exec(path)
+    if (thumbnail && request.method === 'GET') {
+      await requireStaff(request, env)
+      return await calendarInstagramThumbnail(env, thumbnail[1])
+    }
+    if (path === '/api/admin/calendar/schedules' && request.method === 'POST') {
+      await requireStaffMutation(request, env)
+      return json({
+        item: await createSchedule(env, await body(request, 16384), (value) =>
+          hmac(env, value),
+        ),
+      })
+    }
+    const schedule = /^\/api\/admin\/calendar\/schedules\/([^/]+)$/.exec(path)
+    if (schedule && (request.method === 'PUT' || request.method === 'DELETE')) {
+      await requireStaffMutation(request, env)
+      if (request.method === 'DELETE')
+        return json(await deleteSchedule(env, schedule[1], await body(request)))
+      return json({
+        item: await updateSchedule(
+          env,
+          schedule[1],
+          await body(request, 16384),
+        ),
+      })
+    }
+    if (path === '/api/admin/inquiries' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json({ items: await listInquiries(env) })
+    }
+    if (path === '/api/admin/inquiries' && request.method === 'POST') {
+      await requireStaffMutation(request, env)
+      return json({
+        item: await createInquiry(env, await body(request, 16_384), (value) =>
+          hmac(env, value),
+        ),
+      })
+    }
+    const inquiryPath = /^\/api\/admin\/inquiries\/([^/]+)$/.exec(path)
+    if (inquiryPath && request.method === 'DELETE') {
+      await requireStaffMutation(request, env)
+      return json(await deleteInquiry(env, inquiryPath[1], await body(request)))
+    }
+    if (inquiryPath && request.method === 'PUT') {
+      await requireStaffMutation(request, env)
+      return json({
+        item: await updateInquiry(
+          env,
+          inquiryPath[1],
+          await body(request, 16_384),
+        ),
+      })
+    }
+    if (path === '/api/admin/meta-ads' && request.method === 'GET') {
+      await requireStaff(request, env)
+      return json(await readMetaAds(env))
     }
     if (path === '/api/admin/analytics' && request.method === 'GET')
       return await analytics(request, env)
@@ -522,16 +662,24 @@ export async function adminAnalytics(
       return await collect(request, env)
     return json({ error: { code: 'not_found' } }, 404)
   } catch (error) {
+    const knownError =
+      error instanceof AnalyticsError ||
+      error instanceof InquiryError ||
+      error instanceof CalendarError
+    const path = new URL(request.url).pathname
+    const fallback =
+      path.startsWith('/api/admin/calendar') ||
+      path.startsWith('/api/calendar/')
+        ? 'calendar_unavailable'
+        : path.startsWith('/api/admin/inquiries') ||
+            path.startsWith('/api/inquiries')
+          ? 'inquiries_unavailable'
+          : path.startsWith('/api/staff/')
+            ? 'staff_unavailable'
+            : 'analytics_unavailable'
     const response = json(
-      {
-        error: {
-          code:
-            error instanceof AnalyticsError
-              ? error.code
-              : 'analytics_unavailable',
-        },
-      },
-      error instanceof AnalyticsError ? error.status : 503,
+      { error: { code: knownError ? error.code : fallback } },
+      knownError ? error.status : 503,
     )
     if (response.status === 429) response.headers.set('Retry-After', '900')
     return response

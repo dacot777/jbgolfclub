@@ -1,5 +1,29 @@
 # GitHub Pages 배포 기록
 
+## 2026년 11월 18일 · 초대 없는 팀 공동 편집
+
+Cloudflare 운영 사이트에 일반 일정과 문의의 공동 등록·수정·삭제를 배포했습니다. 사이트 주소로 바로 이용하며 기존 고객 개인정보 열람과 Instagram 계정 관리는 별도 권한을 유지합니다. [운영 버전과 PC·모바일 검증 기록](CLOUDFLARE_DEPLOYMENT.md)
+
+## 2026년 11월 17일 · 문의 목록 바로 보기
+
+기존 Cloudflare 워크스페이스에 문의 목록, 전체 일정과 세 계정 피드 화면을 배포했습니다. [운영 검증 기록](CLOUDFLARE_DEPLOYMENT.md)
+
+## 2026년 11월 17일 · 인스타 게시물 모아보기
+
+기존 Cloudflare 워크스페이스에서 세 계정의 공식 Instagram 피드를 볼 수 있습니다. [운영 버전과 검증 내용](CLOUDFLARE_DEPLOYMENT.md)
+
+## 2026년 11월 17일 · 브랜드·지점별 일정과 게시물 모아보기
+
+기존 Cloudflare 워크스페이스에 브랜드·지점별 캘린더, 독립된 인스타 게시물 모아보기, 문의 고객 구분을 배포했습니다. [운영 버전과 검증 내용](CLOUDFLARE_DEPLOYMENT.md)
+
+## 2026년 11월 17일 · 광고별 현재 상태와 워크스페이스 접근
+
+운영 광고 카드에 현재 일시중단 상태를 표시하고 콘텐츠 캘린더를 공개했습니다. 방문 기록은 기존 관리자 비밀번호를 사용하고, 문의와 일정 편집은 일회용 링크로 기기를 등록해 이용합니다. [배포 버전과 검증 내용](CLOUDFLARE_DEPLOYMENT.md)
+
+## 2026년 11월 17일 · 운영 콘텐츠 캘린더
+
+Cloudflare의 기존 대시보드에 세 계정의 콘텐츠 캘린더와 대표님 열람 화면을 배포했습니다. GitHub 소스 브랜치는 `codex/instagram-ads-report`이며, 실제 사이트와 검증 결과는 [Cloudflare 배포 기록](CLOUDFLARE_DEPLOYMENT.md)에 있습니다.
+
 ## 2026-11-06 — 비공개 방문 통계 배포·로고 위 클릭 동작 수정
 
 - 실제 주소: https://jbgolf-connection.jbgolfacademy.workers.dev/ . 소스 `5ee2cd2`, Worker 버전 `7b499e5e-d385-4e04-bb5f-a27f6a817bbd`.

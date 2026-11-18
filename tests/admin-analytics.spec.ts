@@ -155,6 +155,21 @@ async function mockAdmin(
   }
 }
 
+test('공개 대시보드는 게시된 광고가 없어도 관리자 통계를 요청하지 않는다', async ({
+  page,
+}) => {
+  const api = await mockAdmin(page)
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: '인스타그램 광고 성과.' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: '광고 자동 보고서', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByLabel('관리자 비밀번호')).toHaveCount(0)
+  expect(api.reports()).toBe(0)
+})
+
 for (const width of [1440, 390, 320]) {
   test(`${width}px 로고 위 실제 빈 좌표를 세 번 눌러도 선택·끌기 없이 인증 화면만 열린다`, async ({
     page,

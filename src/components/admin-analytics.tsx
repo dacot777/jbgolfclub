@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Clock3,
@@ -185,6 +185,11 @@ export default function AdminAnalytics() {
   const [refresh, setRefresh] = useState(0)
   const lastRequest = useRef(0)
   const errorRef = useRef<HTMLDivElement>(null)
+  const expireSession = useCallback(() => {
+    setReport(null)
+    setSession({ configured: true, authenticated: false })
+    setError('인증이 만료되었습니다. 다시 로그인해 주세요.')
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -233,14 +238,7 @@ export default function AdminAnalytics() {
           },
         )
         if (response.status === 401) {
-          if (active) {
-            setReport(null)
-            setSession((previous) => ({
-              configured: previous?.configured ?? true,
-              authenticated: false,
-            }))
-            setError('인증이 만료되었습니다. 다시 로그인해 주세요.')
-          }
+          if (active) expireSession()
           return
         }
         if (!response.ok) throw new Error('report_unavailable')
@@ -259,7 +257,7 @@ export default function AdminAnalytics() {
     return () => {
       active = false
     }
-  }, [session?.authenticated, days, page, refresh])
+  }, [session?.authenticated, days, page, refresh, expireSession])
   useEffect(() => {
     if (!session?.authenticated) return
     const update = () => {
@@ -362,7 +360,6 @@ export default function AdminAnalytics() {
             src={`${import.meta.env.BASE_URL}brand/jb-academy-shield.png`}
             alt="JB GOLF ACADEMY 방패 로고"
           />
-          <p className="eyebrow">PRIVATE WORKSPACE</p>
           <h1>관리자 로그인</h1>
           <p>방문 기록은 관리자 인증 후에만 확인할 수 있습니다.</p>
           {errorNotice}
@@ -394,33 +391,32 @@ export default function AdminAnalytics() {
       </section>
     )
 
+  const heading = (
+    <section className="page-heading">
+      <div>
+        <h1>
+          방문 기록
+          <span>.</span>
+        </h1>
+        <p className="page-description">
+          사이트 접속과 메뉴별 활동을 관리자만 확인합니다.
+        </p>
+      </div>
+      <div className="admin-actions">
+        <a className="admin-back" href="#overview">
+          <ArrowLeft size={15} aria-hidden="true" />
+          대시보드
+        </a>
+        <Button variant="outline" disabled={busy} onClick={() => void logout()}>
+          <LogOut aria-hidden="true" />
+          로그아웃
+        </Button>
+      </div>
+    </section>
+  )
   return (
     <div className="admin-analytics">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">PRIVATE WORKSPACE</p>
-          <h1>
-            방문 기록<span>.</span>
-          </h1>
-          <p className="page-description">
-            사이트 접속과 메뉴별 활동을 관리자만 확인합니다.
-          </p>
-        </div>
-        <div className="admin-actions">
-          <a className="admin-back" href="#overview">
-            <ArrowLeft size={15} aria-hidden="true" />
-            대시보드
-          </a>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void logout()}
-          >
-            <LogOut aria-hidden="true" />
-            로그아웃
-          </Button>
-        </div>
-      </section>
+      {heading}
       <div className="admin-private-note">
         <ShieldCheck size={18} aria-hidden="true" />
         <p>
