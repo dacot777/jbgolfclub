@@ -441,6 +441,7 @@ export default function InquiryWorkspace({
           onRetry={() => void load()}
           staff={{
             rowId: (row) => row.id,
+            name: (row) => row.name,
             adId: (row) => row.adId,
             ads: linkedOptions,
             notice,

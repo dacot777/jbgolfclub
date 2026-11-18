@@ -30,6 +30,7 @@ type ListProps<T extends InquiryListRow> = {
     newAction: ReactNode
     editAction: (row: T) => ReactNode
     rowId: (row: T) => string
+    name: (row: T) => string
     adId: (row: T) => string | null
     ads: Map<string, string>
     notice: string
@@ -168,10 +169,20 @@ export default function InquiryList<T extends InquiryListRow>({
             </p>
           )}
           {matches?.length ? (
-            <InquiryTable caption="문의 목록 표" columns={columns}>
+            <InquiryTable
+              caption="문의 목록 표"
+              columns={staff ? ['문의자', ...columns] : columns}
+            >
               {matches.map((row, index) => (
                 <tr key={staff ? staff.rowId(row) : index}>
-                  <th scope="row">{row.firstDate ?? '미확인'}</th>
+                  {staff ? (
+                    <>
+                      <th scope="row">{staff.name(row).trim() || '이름 미입력'}</th>
+                      <td>{row.firstDate ?? '미확인'}</td>
+                    </>
+                  ) : (
+                    <th scope="row">{row.firstDate ?? '미확인'}</th>
+                  )}
                   <td>
                     {row.product ? PRODUCT_LABELS[row.product] : '미확인'}
                   </td>

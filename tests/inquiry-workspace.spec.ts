@@ -171,7 +171,7 @@ async function mockWorkspace(page: Page, initiallySignedIn: boolean) {
   }
 }
 
-test('모바일과 PC의 문의 목록은 담당자 연결 여부에 관계없이 열 제목·행 내용·순서·필터가 같다', async ({
+test('모바일과 PC는 같은 문의 현황을 보여주고 담당자 목록에는 문의자 이름도 표시한다', async ({
   context,
 }) => {
   const original: Inquiry = {
@@ -236,7 +236,9 @@ test('모바일과 PC의 문의 목록은 담당자 연결 여부에 관계없�
     await expectTotal(page.getByLabel('전체 문의 현황'), 3)
     const table = page.getByRole('table', { name: '문의 목록 표', exact: true })
     await expectVisibleTableHead(table)
-    await expect(table.getByRole('columnheader')).toHaveText(headers)
+    await expect(table.getByRole('columnheader')).toHaveText(
+      staff ? ['문의자', ...headers] : headers,
+    )
     if (width === 390) {
       const region = page.getByRole('region', {
         name: '문의 목록 표',
@@ -257,7 +259,7 @@ test('모바일과 PC의 문의 목록은 담당자 연결 여부에 관계없�
     }
     const body = table.locator('tbody tr')
     await expect(body).toHaveCount(3)
-    const rows = await body.evaluateAll((elements) =>
+    const allCells = await body.evaluateAll((elements) =>
       elements.map((row) =>
         Array.from(row.querySelectorAll('th,td'), (cell) => {
           const copy = cell.cloneNode(true) as HTMLElement
@@ -266,6 +268,22 @@ test('모바일과 PC의 문의 목록은 담당자 연결 여부에 관계없�
         }),
       ),
     )
+    if (staff) {
+      expect(allCells.map((cells) => cells[0])).toEqual([
+        duplicate.name,
+        newer.name,
+        original.name,
+      ])
+      for (const row of [original, newer, duplicate])
+        await expect(table.getByText(row.name, { exact: true })).toBeVisible()
+    } else {
+      await expect(
+        table.getByRole('columnheader', { name: '문의자', exact: true }),
+      ).toHaveCount(0)
+    }
+    for (const secret of [original.contact, original.note])
+      await expect(page.locator('body')).not.toContainText(secret)
+    const rows = staff ? allCells.map((cells) => cells.slice(1)) : allCells
     expect(rows[0]).toEqual(rows[1])
     expect(rows[2]).not.toEqual(rows[0])
     expect(rows[0]).toEqual(
@@ -441,6 +459,10 @@ for (const staff of [false, true]) {
     await expect(page.getByRole('table').getByRole('row').last()).toContainText(
       '서현',
     )
+    if (staff)
+      await expect(
+        page.getByRole('table').getByText('이름 미입력', { exact: true }),
+      ).toBeVisible()
     api.records.delete(incoming.id)
     await page.clock.fastForward(2000)
     await page.evaluate(() =>
@@ -478,10 +500,26 @@ test('공개 문의 목록 조회 오류는 0건으로 표시하지 않고 다�
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-test('같은 문의 목록에서 담당자 연결 상태에 따라 관리 기능만 열린다', async ({
+test('담당자 연결 후 이름과 관리 기능이 표시되고 해제하면 개인정보를 지운다', async ({
   page,
 }) => {
   const api = await mockWorkspace(page, false)
+  const person: Inquiry = {
+    id: '371ea65c-d544-4fc7-915a-008d78f65ca7',
+    version: 1,
+    firstDate: '2026-01-16',
+    branch: 'hanam',
+    product: 'lesson',
+    channel: 'phone',
+    source: 'unknown',
+    adId: null,
+    stage: 'received',
+    assignee: 'unassigned',
+    name: '권한 확인용 문의자',
+    contact: '비공개 연락처 검증',
+    note: '비공개 상담 메모 검증',
+  }
+  api.records.set(person.id, person)
   await page.route('**/api/admin/session', (route) =>
     route.fulfill({
       json: {
@@ -504,6 +542,7 @@ test('같은 문의 목록에서 담당자 연결 상태에 따라 관리 기능
     page.getByRole('button', { name: '새 문의', exact: true }),
   ).toHaveCount(0)
   expect(api.reads()).toBe(0)
+  await expect(page.locator('body')).not.toContainText(person.name)
   await page.goto('/#staff-device/' + deviceGrant)
   await expect(page).toHaveURL(/#calendar$/)
   await page.goto('/#inquiries')
@@ -515,7 +554,12 @@ test('같은 문의 목록에서 담당자 연결 상태에 따라 관리 기능
   ).toBeVisible()
   expect(api.reads()).toBeGreaterThan(0)
   const summary = page.getByLabel('전체 문의 현황')
-  await expectTotal(summary, 0)
+  await expectTotal(summary, 1)
+  await expect(
+    page.getByRole('table').getByText(person.name, { exact: true }),
+  ).toBeVisible()
+  for (const secret of [person.contact, person.note])
+    await expect(page.locator('body')).not.toContainText(secret)
   await page.getByRole('button', { name: '이 기기 연결 해제' }).click()
   await expect(page.getByText('담당자 도구', { exact: true })).toBeVisible()
   await expect(
@@ -525,6 +569,11 @@ test('같은 문의 목록에서 담당자 연결 상태에 따라 관리 기능
     page.getByRole('button', { name: '새 문의', exact: true }),
   ).toHaveCount(0)
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText(person.name)
+  await expect(
+    page.getByRole('columnheader', { name: '문의자', exact: true }),
+  ).toHaveCount(0)
+  await expectTotal(summary, 1)
   expect(api.analyticsEvents()).toBe(0)
 })
 
@@ -739,6 +788,7 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
       page.getByRole('button', { name: editLabel(input), exact: true }),
     ).toBeVisible()
     await expect(editableRow(page, input)).not.toContainText(customerLabel)
+    await expect(editableRow(page, input)).toContainText(input.name)
   }
   const saved = [...api.records.values()]
   expect(saved).toHaveLength(2)
@@ -756,6 +806,8 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   const branch = page.getByRole('group', { name: '지점', exact: true })
   await expect(branch.getByRole('radio', { name: '하남' })).toBeChecked()
   await branch.getByRole('radio', { name: '청담' }).check()
+  const updatedName = '검증 캠프 A 이름 수정'
+  await page.getByLabel('이름 또는 별칭', { exact: true }).fill(updatedName)
   await page
     .getByRole('combobox', { name: '진행 상태', exact: true })
     .selectOption('completed')
@@ -763,17 +815,20 @@ test('캠프와 레슨 문의를 별도로 저장하고 담당자 인계와 필�
   await expect.poll(() => api.records.get(saved[0].id)?.version).toBe(2)
   expect(api.records.get(saved[0].id)).toMatchObject({
     ...camp,
+    name: updatedName,
     branch: 'cheongdam',
     assignee: 'kim_uihyeon',
     stage: 'completed',
   })
   expect(api.records.get(saved[1].id)).toMatchObject({ ...lesson, version: 1 })
   await expectTotal(page.getByLabel('전체 문의 현황'), 2)
+  await expect(editableRow(page, camp)).toContainText(updatedName)
 
   const beforeReload = api.reads()
   await page.reload()
   await expect.poll(() => api.reads()).toBeGreaterThan(beforeReload)
   await expect(editableRow(page, camp)).toContainText('청담')
+  await expect(editableRow(page, camp)).toContainText(updatedName)
   const adFilter = page.getByLabel('광고 필터', { exact: true })
   await expect(adFilter).toBeHidden()
   await page.getByRole('button', { name: '필터', exact: true }).click()
